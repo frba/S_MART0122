@@ -25,11 +25,12 @@ DICT_READS = {}
 if __name__ == '__main__':
     '''Folder with sequencing reads'''
     ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
+    quality_threshold = 20
     # main.mainloop()
 
     '''Parse files'''
-    sanger.convert_ab12fasta(ab1_folder)
-    sanger.convert_ab12fastq(ab1_folder)
+    # sanger.convert_ab12fasta(ab1_folder)
+    sanger.convert_ab12fastq(ab1_folder, quality_threshold)
     sanger.concatenate_fwd_rev_fasta(ab1_folder)
     sanger.consensus_pairwise_alignment(ab1_folder)
     sanger.concatenate_consensus_db_identifier(ab1_folder)

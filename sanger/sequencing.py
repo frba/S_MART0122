@@ -7,12 +7,12 @@ db_activation_rec = SeqRecord(Seq("AATTTCTACTAAGTGTAGAT"),
                                     name="Activation",
                                     description="")
 
-db_deletion_rec = SeqRecord(Seq("gttttagagctagaaatagc"),
+db_deletion_rec = SeqRecord(Seq("GTTTTAGTACTCTGTAATTT"),
                                   id="Deletion_identifier",
                                   name="Deletion",
                                   description="")
 
-db_interference_rec = SeqRecord(Seq("gttttagtactctgtaattt"),
+db_interference_rec = SeqRecord(Seq("GTTTTAGAGCTAGAAATAGC"),
                                     id="Interference_identifier",
                                     name="Interference",
                                     description="")
@@ -28,6 +28,8 @@ class Read:
         self.db_name = ''
         self.db_score = 0
         self.db_sequence = ''
+        self.db_right_end = 0
+        self.db_left_end = 0
         self.gene_name = ''
         self.gene_score = 0
         self.gene_number = ''

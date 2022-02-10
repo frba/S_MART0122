@@ -1,6 +1,6 @@
 import concurrent.futures
-import os, pandas, numpy, time
-from sanger import sequencing
+import os, pandas, numpy, time, numbers, re
+from . import sequencing
 from io import StringIO
 from Bio import SeqIO, AlignIO
 from Bio.Align.Applications import MafftCommandline
@@ -14,66 +14,144 @@ DATABASES_SEQ = sequencing.databases
 DICT_READS = {}
 
 
+def natural_sort(l):
+    convert = lambda text: int(text) if text.isdigit() else text.lower()
+    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
+    return sorted(l, key = alphanum_key)
+
+
 def convert_ab12fasta(ab1_folder):
     '''Function converts ab1 files to fasta'''
-    '''Files are created in output folder named fasta'''
 
-    #'''Check if output directory exists'''
+    '''Check if output directory exists'''
     output_folder = os.path.join(ab1_folder, 'fasta')
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
 
-    #'''Convert ab1 to fasta using biopython'''
-    for ab1_file in os.listdir(ab1_folder):
+    '''Convert ab1 to fasta using biopython'''
+    for ab1_file in natural_sort(os.listdir(ab1_folder)):
         if ab1_file.endswith('.ab1'):
             try:
                 records = SeqIO.parse(os.path.join(ab1_folder, ab1_file), "abi-trim")
                 count = SeqIO.write(records, os.path.join(output_folder, ab1_file[:-4] + '.fa'), "fasta")
-                print("%s Converted %i records" % (ab1_file, count))
+                # print("%s Converted %i records" % (ab1_file, count))
             except:
                 print(ab1_file + ' could not be converted.')
 
 
-def convert_ab12fastq(ab1_folder):
-    '''Function converts ab1 files to fasta'''
+def get_trim_idx_left(read_quals, quality_threshold):
+    '''
+    :param read_quals:
+    :param quality_threshold:
+    :return:
+    https://cutadapt.readthedocs.io/en/stable/algorithms.html#quality-trimming-algorithm
+    '''
+    read_quals_reduced = [i - quality_threshold for i in read_quals]
+    sum = 0
+    for x in range(0, len(read_quals_reduced)):
+        sum += read_quals_reduced[x]
+        if sum > 0:
+            return x
+    return 0
+
+
+def get_trim_idx_right(read_quals, quality_threshold):
+    read_quals_reduced = []
+    sum = 0
+    for i in range(len(read_quals)-1, 0, -1):
+        quality = read_quals[i] - quality_threshold
+        read_quals_reduced.append(quality)
+    for x in range(0, len(read_quals_reduced)):
+        sum += read_quals_reduced[x]
+        if sum > 0:
+            idx = (len(read_quals_reduced)-1) - x
+            return idx
+    return len(read_quals_reduced)-1
+
+
+def convert_ab12fastq(ab1_folder, quality_threshold):
     '''Files are created in output folder named fastq'''
 
-    #'''Check if output directory exists'''
+    '''Check if output directory exists'''
     output_folder = os.path.join(ab1_folder, 'fastq')
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
 
-    #'''Convert ab1 to fasta using biopython'''
-    for ab1_file in os.listdir(ab1_folder):
+    '''Check if output directory exists'''
+    output_trimmed_folder = os.path.join(ab1_folder, 'fasta_trimmed')
+    if not os.path.exists(output_trimmed_folder):
+        os.mkdir(output_trimmed_folder)
+
+    '''Check if quality output directory exists'''
+    output_quality_trimmed_folder = os.path.join(ab1_folder, 'fasta_trimmed_quality')
+    if not os.path.exists(output_quality_trimmed_folder):
+        os.mkdir(output_quality_trimmed_folder)
+
+    '''Convert ab1 to fasta using biopython'''
+    for ab1_file in natural_sort(os.listdir(ab1_folder)):
         if ab1_file.endswith('.ab1'):
             try:
                 records = SeqIO.parse(os.path.join(ab1_folder, ab1_file), "abi-trim")
                 count = SeqIO.write(records, os.path.join(output_folder, ab1_file[:-4] + '.fastq'), "fastq")
-                print("%s Converted %i records" % (ab1_file, count))
+
+                for rec in SeqIO.parse(os.path.join(output_folder, ab1_file[:-4] + '.fastq'), "fastq"):
+                    new_rec = ''
+                    # new_rec_trim = ''
+                    read_quals = rec.letter_annotations['phred_quality']
+                    # print(read_quals)
+
+                    l_idx_trimm = get_trim_idx_left(read_quals, quality_threshold)
+                    r_idx_trimm = get_trim_idx_right(read_quals, quality_threshold)
+
+                    # for idx in range(0, len(read_quals)):
+                    #     if read_quals[idx] < quality_threshold:
+                    #         new_rec += 'N'
+                    #     else:
+                    #         new_rec += rec.seq[idx]
+
+                    for idx in range(l_idx_trimm, r_idx_trimm+1):
+                        # if read_quals[idx] < quality_threshold:
+                        #     new_rec_trim += 'N'
+
+                        # else:
+                        new_rec += rec.seq[idx]
+                    trimmed_rec = SeqRecord(Seq(new_rec),
+                                                id=rec.id,
+                                                name=rec.name,
+                                                description=ab1_file[:-4])
+                    count = SeqIO.write(trimmed_rec, os.path.join(output_trimmed_folder, ab1_file[:-4] + '.fa'), "fasta")
+                    with open(os.path.join(output_quality_trimmed_folder, ab1_file[:-4] + '.qual'), "w") as quality_handle:
+                        quality_handle.write(str(read_quals[l_idx_trimm:r_idx_trimm+1])[+1:-1])
+                # print("%s Converted %i records" % (ab1_file, count))
             except:
                 print(ab1_file + ' could not be converted.')
+                # pass
 
 
 def concatenate_fwd_rev_fasta(ab1_folder):
     '''Using fasta files to copy forward and reverse sequencing read in an unique fasta file
-    the output files are created in the folder named pair'''
-    #'''check if output directory exists'''
+    the output files are created in the folder named pair
+    Forward reads MUST BE added first in the file then reverse!!!
+    MAFFT assumes the first added sequence as the correct direction.
+    '''
+
+    '''Check if output directory exists'''
     output_folder = os.path.join(ab1_folder, 'pair')
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
 
-    fasta_folder = os.path.join(ab1_folder, 'fasta')
+    fasta_folder = os.path.join(ab1_folder, 'fasta_trimmed')
     total_pair_reads = int(len(os.listdir(fasta_folder)) / 2) + 1
 
     for i in range(1, total_pair_reads):
         file_label = 'M' + str(i) + '_'
         read_pair = []
-        for fasta_file in os.listdir(fasta_folder):
+        for fasta_file in natural_sort(os.listdir(fasta_folder)):
             if fasta_file.__contains__(file_label):
                 read_pair.append(fasta_file)
 
-        fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta', read_pair[0])), "fasta")
-        fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta', read_pair[1])), "fasta")
+        fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
+        fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
 
         with open(os.path.join(output_folder, fasta_read1.name + '_' + fasta_read2.name + '.fa'), 'w') \
                 as handle:
@@ -95,28 +173,64 @@ def score_alignment(read_seq, identifier_seq):
     return align
 
 
-def get_consensus(sequence_1, sequence_2):
+def get_consensus(sequence_1, sequence_2, sequence_1_qual, sequence_2_qual):
+    idx_qual_seq_1 = 0
+    idx_qual_seq_2 = 0
     consensus_sequence = ''
     for index, nucleotideo in enumerate(sequence_1):
         if nucleotideo == sequence_2[index]:
             consensus_sequence += nucleotideo
+            idx_qual_seq_1 += 1
+            idx_qual_seq_2 += 1
         elif nucleotideo == '-' and sequence_2[index] != '-':
             consensus_sequence += sequence_2[index]
-        elif nucleotideo == 'N' and sequence_2[index] != '-':
-            consensus_sequence += sequence_2[index]
+            idx_qual_seq_2 += 1
+        # elif nucleotideo == 'n' and sequence_2[index] != '-':
+        #     consensus_sequence += sequence_2[index]
+        #     idx_qual_seq_1 += 1
+        #     idx_qual_seq_2 += 1
         elif sequence_2[index] == '-' and nucleotideo != '-':
             consensus_sequence += nucleotideo
-        elif sequence_2[index] == 'N' and nucleotideo != '-':
-            consensus_sequence += nucleotideo
+            idx_qual_seq_1 += 1
+        # elif sequence_2[index] == 'n' and nucleotideo != '-':
+        #     consensus_sequence += nucleotideo
+        #     idx_qual_seq_1 += 1
+        #     idx_qual_seq_2 += 1
         elif nucleotideo != sequence_2[index]:
-            consensus_sequence += sequence_2[index]
+            if sequence_1_qual[idx_qual_seq_1] > sequence_2_qual[idx_qual_seq_2]:
+                consensus_sequence += sequence_1[index]
+            else:
+                consensus_sequence += sequence_2[index]
+            idx_qual_seq_1 += 1
+            idx_qual_seq_2 += 1
 
     return consensus_sequence
+
+
+# def consensus_pairwise_alignment(ab1_folder):
+#     fasta_folder = os.path.join(ab1_folder, 'fasta_trimmed')
+#     total_pair_reads = int(len(os.listdir(fasta_folder)) / 2) + 1
+#
+#     for i in range(1, total_pair_reads):
+#         file_label = 'M' + str(i) + '_'
+#         read_pair = []
+#         for fasta_file in os.listdir(fasta_folder):
+#             if fasta_file.__contains__(file_label):
+#                 read_pair.append(fasta_file)
+#
+#         read1_fasta = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
+#         read1_qual = SeqIO.parse(open(os.path.join(ab1_folder, 'fasta_trimmed_quality', read1_fasta.description+'.qual')), "qual")
+#         read2_fasta = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
+#         read2_qual = SeqIO.parse(open(os.path.join(ab1_folder, 'fasta_trimmed_quality', read2_fasta.description + '.qual')), "qual")
+#
+#         align = score_alignment(read1_fasta.seq, read2_fasta.reverse_complement().seq)
+#         print(str(align))
 
 
 def consensus_pairwise_alignment(ab1_folder):
     ''''A pairwise alignment is applied in a fasta file with two sequencing reads'''
     pair_fasta_folder = os.path.join(ab1_folder, 'pair')
+    trimmed_qual_folder = os.path.join(ab1_folder, 'fasta_trimmed_quality')
     '''Check if output directory exists'''
     output_folder = os.path.join(ab1_folder, 'alignment_reads')
     if not os.path.exists(output_folder):
@@ -125,13 +239,21 @@ def consensus_pairwise_alignment(ab1_folder):
     if not os.path.exists(output_folder_fasta):
         os.mkdir(output_folder_fasta)
 
-    for pair_fasta_file in sorted(os.listdir(pair_fasta_folder)):
+    for pair_fasta_file in natural_sort(os.listdir(pair_fasta_folder)):
         file_path = os.path.join(pair_fasta_folder, pair_fasta_file)
-        mafft_cline = MafftCommandline(adjustdirection=True, input=file_path, lep=-0.5)
+        mafft_cline = MafftCommandline(adjustdirection=True, input=file_path, localpair=True, lep=-0.5)
         stdout, stderr = mafft_cline()
-        align = AlignIO.read(StringIO(stdout.upper()), "fasta")
+        align = AlignIO.read(StringIO(stdout), "fasta")
+        read1_qual_name = align[0].description[+len(align[0].name)+1:]
+        read2_qual_name = align[1].description[+len(align[1].name)+1:]
+        read1_qual = numpy.loadtxt(os.path.join(ab1_folder, 'fasta_trimmed_quality', read1_qual_name+'.qual'), comments="#", delimiter=",", unpack=False)
+        read2_qual = numpy.loadtxt(os.path.join(ab1_folder, 'fasta_trimmed_quality', read2_qual_name+'.qual'), comments="#", delimiter=",", unpack=False)
 
-        consensus = get_consensus(align[0].seq, align[1].seq)
+        '''Array with Phred quality needs to be revert for reverse reads'''
+        read1_qual = read1_qual[::-1] if str(align[0].id).startswith('_R') else read1_qual
+        read2_qual = read2_qual[::-1] if str(align[1].id).startswith('_R') else read2_qual
+
+        consensus = get_consensus(align[0].seq, align[1].seq, read1_qual, read2_qual)
         consensus_rec = SeqRecord(Seq(consensus), id=pair_fasta_file[:-3] + '_consensus')
 
         '''Save alignment_consensus in file'''
@@ -144,7 +266,7 @@ def consensus_pairwise_alignment(ab1_folder):
 
 def concatenate_consensus_db_identifier(ab1_folder):
     fasta_consensus_folder = os.path.join(ab1_folder, 'fasta_consensus')
-    for consensus_fasta_file in sorted(os.listdir(fasta_consensus_folder)):
+    for consensus_fasta_file in natural_sort(os.listdir(fasta_consensus_folder)):
         if os.path.isfile(os.path.join(fasta_consensus_folder, consensus_fasta_file)):
             consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, consensus_fasta_file)), "fasta")
             for db in DATABASES_SEQ:
@@ -165,7 +287,7 @@ def identify_database(ab1_folder):
     for db in DATABASES_SEQ:
         fasta_consensus_db_folder = os.path.join(ab1_folder, 'fasta_consensus', db.name)
 
-        for consensus_fasta_db_file in sorted(os.listdir(fasta_consensus_db_folder)):
+        for consensus_fasta_db_file in natural_sort(os.listdir(fasta_consensus_db_folder)):
             read_label = str(consensus_fasta_db_file).replace(str('_' + db.name), '')
             consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, read_label)), "fasta")
 
@@ -178,17 +300,28 @@ def identify_database(ab1_folder):
                 count_num_alignments +=1
                 align1 = score_alignment(consensus_fasta_read.seq,db.seq)
                 score1 = (align1.score/len(str(db.seq)))*100
-                # print(str(score1) +'% '+ str(consensus_fasta_read.name) + ' + ' + str(db.name) + ': ' + str(align1))
+                score2 = -1
+
                 if score1 < 100:
+                    count_num_alignments += 1
                     align2 = score_alignment(consensus_fasta_read.reverse_complement().seq, db.seq)
                     score2 = (align2.score / len(str(db.seq))) * 100
-                    # print(str(score2) +'% '+ str(consensus_fasta_read.name) + ' + ' + str(db.name) + ': ' + str(align2))
-                score = max(score1, score2)
+
+                if score1 > score2:
+                    score = score1
+                    l_end = min(align1.aligned[0])[0]
+                    r_end = max(align1.aligned[0])[1]
+                else:
+                    score = score2
+                    l_end = min(align2.aligned[0])[0]
+                    r_end = max(align2.aligned[0])[1]
 
                 if read_temp.db_score < score:
                     read_temp.db_score = round(score,0)
                     read_temp.db_name = db.name
                     read_temp.db_sequence = str(db.seq).upper()
+                    read_temp.db_right_end = r_end
+                    read_temp.db_left_end = l_end
                     DICT_READS[read_label] = read_temp
 
                 delta = (round(time.time()*1000) - start_time)
@@ -209,6 +342,11 @@ def print_results_database(ab1_folder):
 
     for read in DICT_READS:
         seq = DICT_READS[read]
+
+        right = seq.db_right_end + 25 if seq.db_right_end + 25 < len(seq.sequence) else len(seq.sequence)-1
+        left = seq.db_left_end - 25 if seq.db_left_end - 25 > 0 else 0
+        if seq.db_name != 'Deletion':
+            seq.sequence = seq.sequence[left:right]
         data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score])
 
     df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'High_score'])
@@ -445,30 +583,3 @@ def identify_gene_parallel():
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
                   + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
                   + ' ' + str(read.gene_number) + ' ' + str(read.gene_score), end='' )
-
-
-# if __name__ == '__main__':
-#     '''Folder with sequencing reads'''
-#     ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
-#     main.mainloop()
-    #
-    # '''Parse files'''
-    # convert_ab12fasta(ab1_folder)
-    # convert_ab12fastq(ab1_folder)
-    # concatenate_fwd_rev_fasta(ab1_folder)
-    # consensus_pairwise_alignment(ab1_folder)
-    # concatenate_consensus_db_identifier(ab1_folder)
-
-    # '''Identify database labels'''
-    # identify_database(ab1_folder)
-    # print_results_database(ab1_folder)
-
-    # '''Using consensus files add each one of the database identifier'''
-    # error, DICT_READS = load_read_from_db_result(ab1_folder)
-    # if DICT_READS is not None:
-    #     temp_path = mount_virtual_path(ab1_folder)
-    #     identify_gene_parallel()
-    #     print_results_gene(ab1_folder)
-    #
-    # else:
-    #     print(error)
