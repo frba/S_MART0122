@@ -350,7 +350,6 @@ def print_results_database(ab1_folder):
         data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score])
 
     df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'High_score'])
-    df = df.sort_values(by=['Database'])
     df.to_excel(os.path.join(output_folder,'db_result.xlsx'), index=False)
 
     print('\nDB result file placed at: %s' % output_folder)
@@ -417,7 +416,6 @@ def print_results_gene(ab1_folder):
 
     df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene',
                                          'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df = df.sort_values(by=['Database'])
     df.to_excel(os.path.join(output_folder,'gene_result.xlsx'), index=False)
 
 
