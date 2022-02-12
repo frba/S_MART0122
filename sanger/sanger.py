@@ -1,10 +1,10 @@
 import concurrent.futures
-import os, pandas, numpy, time, numbers, re
+import os, pandas, numpy, time, re
 from . import sequencing
 from io import StringIO
 from Bio import SeqIO, AlignIO
 from Bio.Align.Applications import MafftCommandline
-from Bio.Align import AlignInfo, PairwiseAligner
+from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from tkinter import *
@@ -96,29 +96,24 @@ def convert_ab12fastq(ab1_folder, quality_threshold):
 
                 for rec in SeqIO.parse(os.path.join(output_folder, ab1_file[:-4] + '.fastq'), "fastq"):
                     new_rec = ''
-                    # new_rec_trim = ''
                     read_quals = rec.letter_annotations['phred_quality']
-                    # print(read_quals)
 
                     l_idx_trimm = get_trim_idx_left(read_quals, quality_threshold)
                     r_idx_trimm = get_trim_idx_right(read_quals, quality_threshold)
 
-                    # for idx in range(0, len(read_quals)):
-                    #     if read_quals[idx] < quality_threshold:
-                    #         new_rec += 'N'
-                    #     else:
-                    #         new_rec += rec.seq[idx]
-
                     for idx in range(l_idx_trimm, r_idx_trimm+1):
-                        # if read_quals[idx] < quality_threshold:
-                        #     new_rec_trim += 'N'
-
-                        # else:
                         new_rec += rec.seq[idx]
+
                     trimmed_rec = SeqRecord(Seq(new_rec),
                                                 id=rec.id,
                                                 name=rec.name,
                                                 description=ab1_file[:-4])
+
+                    if len(trimmed_rec.seq) == len(read_quals[l_idx_trimm:r_idx_trimm+1]):
+                        print(ab1_file, len(rec.seq), len(trimmed_rec.seq), len(read_quals[l_idx_trimm:r_idx_trimm+1]))
+                    else:
+                        print(ab1_file, len(rec.seq), len(trimmed_rec.seq), len(read_quals[l_idx_trimm:r_idx_trimm+1]) + ' ERROR')
+
                     count = SeqIO.write(trimmed_rec, os.path.join(output_trimmed_folder, ab1_file[:-4] + '.fa'), "fasta")
                     with open(os.path.join(output_quality_trimmed_folder, ab1_file[:-4] + '.qual'), "w") as quality_handle:
                         quality_handle.write(str(read_quals[l_idx_trimm:r_idx_trimm+1])[+1:-1])
@@ -146,6 +141,7 @@ def concatenate_fwd_rev_fasta(ab1_folder):
     for i in range(1, total_pair_reads):
         file_label = 'M' + str(i) + '_'
         read_pair = []
+        '''Mafft is affected by the order the sequences are added in file'''
         for fasta_file in natural_sort(os.listdir(fasta_folder)):
             if fasta_file.__contains__(file_label):
                 read_pair.append(fasta_file)
@@ -185,17 +181,11 @@ def get_consensus(sequence_1, sequence_2, sequence_1_qual, sequence_2_qual):
         elif nucleotideo == '-' and sequence_2[index] != '-':
             consensus_sequence += sequence_2[index]
             idx_qual_seq_2 += 1
-        # elif nucleotideo == 'n' and sequence_2[index] != '-':
-        #     consensus_sequence += sequence_2[index]
-        #     idx_qual_seq_1 += 1
-        #     idx_qual_seq_2 += 1
+
         elif sequence_2[index] == '-' and nucleotideo != '-':
             consensus_sequence += nucleotideo
             idx_qual_seq_1 += 1
-        # elif sequence_2[index] == 'n' and nucleotideo != '-':
-        #     consensus_sequence += nucleotideo
-        #     idx_qual_seq_1 += 1
-        #     idx_qual_seq_2 += 1
+
         elif nucleotideo != sequence_2[index]:
             if sequence_1_qual[idx_qual_seq_1] > sequence_2_qual[idx_qual_seq_2]:
                 consensus_sequence += sequence_1[index]
@@ -205,26 +195,6 @@ def get_consensus(sequence_1, sequence_2, sequence_1_qual, sequence_2_qual):
             idx_qual_seq_2 += 1
 
     return consensus_sequence
-
-
-# def consensus_pairwise_alignment(ab1_folder):
-#     fasta_folder = os.path.join(ab1_folder, 'fasta_trimmed')
-#     total_pair_reads = int(len(os.listdir(fasta_folder)) / 2) + 1
-#
-#     for i in range(1, total_pair_reads):
-#         file_label = 'M' + str(i) + '_'
-#         read_pair = []
-#         for fasta_file in os.listdir(fasta_folder):
-#             if fasta_file.__contains__(file_label):
-#                 read_pair.append(fasta_file)
-#
-#         read1_fasta = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
-#         read1_qual = SeqIO.parse(open(os.path.join(ab1_folder, 'fasta_trimmed_quality', read1_fasta.description+'.qual')), "qual")
-#         read2_fasta = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
-#         read2_qual = SeqIO.parse(open(os.path.join(ab1_folder, 'fasta_trimmed_quality', read2_fasta.description + '.qual')), "qual")
-#
-#         align = score_alignment(read1_fasta.seq, read2_fasta.reverse_complement().seq)
-#         print(str(align))
 
 
 def consensus_pairwise_alignment(ab1_folder):
@@ -243,6 +213,7 @@ def consensus_pairwise_alignment(ab1_folder):
         file_path = os.path.join(pair_fasta_folder, pair_fasta_file)
         mafft_cline = MafftCommandline(adjustdirection=True, input=file_path, localpair=True, lep=-0.5)
         stdout, stderr = mafft_cline()
+
         align = AlignIO.read(StringIO(stdout), "fasta")
         read1_qual_name = align[0].description[+len(align[0].name)+1:]
         read2_qual_name = align[1].description[+len(align[1].name)+1:]
