@@ -211,7 +211,8 @@ def consensus_pairwise_alignment(ab1_folder):
 
     for pair_fasta_file in natural_sort(os.listdir(pair_fasta_folder)):
         file_path = os.path.join(pair_fasta_folder, pair_fasta_file)
-        mafft_cline = MafftCommandline(adjustdirection=True, input=file_path, localpair=True, lep=-0.5)
+        #lep is used to penalize internal gaps more strongly than terminal gaps
+        mafft_cline = MafftCommandline(adjustdirection=True, localpair=True, lep=-0.5, input=file_path)
         stdout, stderr = mafft_cline()
 
         align = AlignIO.read(StringIO(stdout), "fasta")
