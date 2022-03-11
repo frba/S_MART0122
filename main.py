@@ -1,3 +1,5 @@
+import sys
+
 from sanger import sequencing, sanger
 from tkinter import *
 from tkinter import filedialog
@@ -21,8 +23,7 @@ DICT_READS = {}
 # button2 = Button(frame1, text='Select file')
 # button2.grid(row=4, column=0)
 
-
-if __name__ == '__main__':
+def main(argsv):
     '''Folder with sequencing reads'''
     ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
     quality_threshold = 20
@@ -48,3 +49,6 @@ if __name__ == '__main__':
 
     else:
         print(error)
+
+if __name__ == '__main__':
+    main(sys.argv)
