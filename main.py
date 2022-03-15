@@ -1,3 +1,4 @@
+import os.path
 import sys
 
 from sanger import sequencing, sanger
@@ -23,9 +24,12 @@ DICT_READS = {}
 # button2 = Button(frame1, text='Select file')
 # button2.grid(row=4, column=0)
 
-def main(argsv):
+def main(argv):
     '''Folder with sequencing reads'''
-    ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
+    # ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
+    # num_threads = 2
+    ab1_folder = os.path.join(argv[1], 'Sanger_seq_test_data')
+    num_threads = argv[2]
     quality_threshold = 20
     # main.mainloop()
 
@@ -44,7 +48,7 @@ def main(argsv):
     error, DICT_READS = sanger.load_read_from_db_result(ab1_folder)
     if DICT_READS is not None:
         temp_path = sanger.mount_virtual_path(ab1_folder)
-        sanger.identify_gene_parallel()
+        sanger.identify_gene_parallel(num_threads)
         sanger.print_results_gene(ab1_folder)
 
     else:

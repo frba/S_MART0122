@@ -347,9 +347,12 @@ def load_read_from_db_result(ab1_folder):
 
 
 def load_gene_db(db_label):
-    activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
-    deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
-    interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
+    # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
+    # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
+    # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
+    activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
+    deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
+    interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
 
     if db_label == 'Activation':
         df = pandas.read_csv(activation_file_path)
@@ -534,12 +537,12 @@ def job_descriptions_generator():
                 yield job_description
 
 
-def identify_gene_parallel():
+def identify_gene_parallel(num_threads):
     start_time = round(time.time()*1000)
     count_total_alignments = 0
 
     job_descriptions = job_descriptions_generator()
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
         jobs = [executor.submit(process_job_biopython, job_description) for job_description in job_descriptions]
 
         for f in concurrent.futures.as_completed(jobs):
