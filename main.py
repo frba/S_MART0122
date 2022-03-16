@@ -29,7 +29,7 @@ def main(argv):
     # ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
     # num_threads = 2
     ab1_folder = os.path.join(argv[1], 'Sanger_seq_test_data')
-    num_threads = argv[2]
+    num_threads = int(argv[2])
     quality_threshold = 20
     # main.mainloop()
 
