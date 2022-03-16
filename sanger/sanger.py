@@ -297,7 +297,7 @@ def identify_database(ab1_folder):
                     DICT_READS[read_label] = read_temp
 
                 delta = (round(time.time()*1000) - start_time)
-                print('\r' + 'Total alignments ' + str(count_num_alignments) + ' performed in ' + str(delta)
+                print('Total alignments ' + str(count_num_alignments) + ' performed in ' + str(delta)
                       + 'ms. Working on database: ' + str(db.name) + ' speed: '
                       + str(round(count_num_alignments * 1000 / delta, 0)) + ' alignments/sec', end='')
 
@@ -439,7 +439,7 @@ def identify_gene(ab1_folder, temp_path, start_time):
                             seq.gene_sequence = str(gene_rec.seq).upper()
                             # print('\n', seq.name, seq.db_name, seq.db_score, seq.gene_number, seq.gene_name, seq.gene_score, seq.gene_sequence)
                         delta = int(time.time() - start_time)
-                        print('\r' + 'Total alignments ' + str(count_num_alignments) + ' performed. '
+                        print('Total alignments ' + str(count_num_alignments) + ' performed. '
                               + 'Working on database: ' + str(db.name) + ' #seq: ' + str(count_num_alignments)
                               + str(count_num_alignments*60/delta) + ' alignments/min', end='')
                 print_results_gene(ab1_folder)
@@ -552,7 +552,7 @@ def identify_gene_parallel(num_threads):
             count_total_alignments+=alignments_done
 
             delta = (round(time.time() * 1000) - start_time)
-            print('\r' + 'Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
+            print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
                   + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
                   + ' ' + str(read.gene_number) + ' ' + str(read.gene_score), end='' )
