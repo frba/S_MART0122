@@ -26,7 +26,7 @@ DICT_READS = {}
 
 def main(argv):
     '''Folder with sequencing reads'''
-    # ab1_folder = '/home/flavia/Downloads/G_MART0122/Sanger_seq_test data'
+    # ab1_folder = '/home/flavia/Downloads/G_MART0122/magic_sanger_.ab1_files'
     # num_threads = 2
     ab1_folder = os.path.join(argv[1], 'Sanger_seq_test_data')
     num_threads = int(argv[2])

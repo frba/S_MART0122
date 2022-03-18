@@ -136,23 +136,23 @@ def concatenate_fwd_rev_fasta(ab1_folder):
         os.mkdir(output_folder)
 
     fasta_folder = os.path.join(ab1_folder, 'fasta_trimmed')
-    total_pair_reads = int(len(os.listdir(fasta_folder)) / 2) + 1
-
-    for i in range(1, total_pair_reads):
-        file_label = 'M' + str(i) + '_'
+    '''Mafft is affected by the order the sequences are added in file'''
+    for fasta_file in natural_sort(os.listdir(fasta_folder)):
         read_pair = []
-        '''Mafft is affected by the order the sequences are added in file'''
-        for fasta_file in natural_sort(os.listdir(fasta_folder)):
-            if fasta_file.__contains__(file_label):
-                read_pair.append(fasta_file)
+        if len(read_pair) == 0 and fasta_file.__contains__('_518_'):
+            read_pair.append(fasta_file)
+            for fasta_file in natural_sort(os.listdir(fasta_folder)):
+                if fasta_file.__contains__('_520_') and read_pair[0][-14:] == fasta_file[-14:]:
+                    read_pair.append(fasta_file)
 
-        fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
-        fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
+                    fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
+                    fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
 
-        with open(os.path.join(output_folder, fasta_read1.name + '_' + fasta_read2.name + '.fa'), 'w') \
-                as handle:
-            SeqIO.write([fasta_read1, fasta_read2], handle, 'fasta')
-            print('Concatenate files: %s - %s' % (read_pair[0], read_pair[1]))
+                    with open(os.path.join(output_folder, fasta_read1.name + '_' + fasta_read2.name + '.fa'), 'w') \
+                        as handle:
+                        SeqIO.write([fasta_read1, fasta_read2], handle, 'fasta')
+                    print('Concatenate files: %s - %s' % (read_pair[0], read_pair[1]))
+
 
 
 def score_alignment(read_seq, identifier_seq):
@@ -299,7 +299,7 @@ def identify_database(ab1_folder):
                 delta = (round(time.time()*1000) - start_time)
                 print('Total alignments ' + str(count_num_alignments) + ' performed in ' + str(delta)
                       + 'ms. Working on database: ' + str(db.name) + ' speed: '
-                      + str(round(count_num_alignments * 1000 / delta, 0)) + ' alignments/sec', end='')
+                      + str(round(count_num_alignments * 1000 / delta, 0)) + ' alignments/sec')
 
     return DICT_READS
 
@@ -441,7 +441,7 @@ def identify_gene(ab1_folder, temp_path, start_time):
                         delta = int(time.time() - start_time)
                         print('Total alignments ' + str(count_num_alignments) + ' performed. '
                               + 'Working on database: ' + str(db.name) + ' #seq: ' + str(count_num_alignments)
-                              + str(count_num_alignments*60/delta) + ' alignments/min', end='')
+                              + str(count_num_alignments*60/delta) + ' alignments/min')
                 print_results_gene(ab1_folder)
 
     return DICT_READS
@@ -555,4 +555,4 @@ def identify_gene_parallel(num_threads):
             print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
                   + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
-                  + ' ' + str(read.gene_number) + ' ' + str(read.gene_score), end='' )
+                  + ' ' + str(read.gene_number) + ' ' + str(read.gene_score),)
