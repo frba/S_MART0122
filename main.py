@@ -27,11 +27,14 @@ DICT_READS = {}
 def main(argv):
     '''Folder with sequencing reads'''
     # ab1_folder = '/home/flavia/Downloads/G_MART0122/magic_sanger_.ab1_files'
-    # num_threads = 2
+    # num_threads = 5
     ab1_folder = os.path.join(argv[1], 'Sanger_seq_test_data')
     num_threads = int(argv[2])
     quality_threshold = 20
     # main.mainloop()
+
+    '''gRNA remove duplicity'''
+    # sanger.remove_duplicity_gRNA_db(ab1_folder)
 
     '''Parse files'''
     # sanger.convert_ab12fasta(ab1_folder)

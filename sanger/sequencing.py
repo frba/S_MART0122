@@ -25,6 +25,8 @@ class Read:
     def __init__(self, name, sequence):
         self.name = name
         self.sequence = sequence
+        self.plate = ''
+        self.well = ''
         self.db_name = ''
         self.db_score = 0
         self.db_sequence = ''

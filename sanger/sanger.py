@@ -129,7 +129,7 @@ def concatenate_fwd_rev_fasta(ab1_folder):
     Forward reads MUST BE added first in the file then reverse!!!
     MAFFT assumes the first added sequence as the correct direction.
     '''
-
+    filename_lenght_to_compare = 14
     '''Check if output directory exists'''
     output_folder = os.path.join(ab1_folder, 'pair')
     if not os.path.exists(output_folder):
@@ -142,13 +142,14 @@ def concatenate_fwd_rev_fasta(ab1_folder):
         if len(read_pair) == 0 and fasta_file.__contains__('_518_'):
             read_pair.append(fasta_file)
             for fasta_file in natural_sort(os.listdir(fasta_folder)):
-                if fasta_file.__contains__('_520_') and read_pair[0][-14:] == fasta_file[-14:]:
+                if fasta_file.__contains__('_520_') \
+                        and read_pair[0][-filename_lenght_to_compare:] == fasta_file[-filename_lenght_to_compare:]:
                     read_pair.append(fasta_file)
 
                     fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
                     fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
 
-                    with open(os.path.join(output_folder, fasta_read1.name + '_' + fasta_read2.name + '.fa'), 'w') \
+                    with open(os.path.join(output_folder, read_pair[0][:-3] + '_' + read_pair[1][:-3] + '.fa'), 'w') \
                         as handle:
                         SeqIO.write([fasta_read1, fasta_read2], handle, 'fasta')
                     print('Concatenate files: %s - %s' % (read_pair[0], read_pair[1]))
@@ -341,18 +342,30 @@ def load_read_from_db_result(ab1_folder):
             read_temp.db_name = row[2]
             read_temp.db_sequence = row[3]
             read_temp.db_score = row[4]
+            plate_well = str(row[0]).upper().split('PLATE')[1]
+            read_temp.plate = plate_well.split('_')[1]
+            read_temp.well = plate_well.split('_')[2]
             DICT_READS[row[0]] = read_temp
 
     return error, DICT_READS
 
 
 def load_gene_db(db_label):
+    '''Local path'''
+    # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
+    # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
+    # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
+    '''Compute canada path'''
+    activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
+    deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
+    interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
+
     # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
     # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
     # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
-    activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
-    deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
-    interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
+    # activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
+    # deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
+    # interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
 
     if db_label == 'Activation':
         df = pandas.read_csv(activation_file_path)
@@ -368,12 +381,24 @@ def mount_virtual_path(ab1_folder):
     # path = '/mnt/ram'
     # cmd = 'mount -t ramfs -o size=20m ramfs /mnt/ram'
     # os.system(cmd)
-
     path = '/dev/shm'
     if not os.path.exists(path):
         os.mkdir(path)
 
     return path
+
+def fix_my_stuff(x):
+    x = x.tolist()
+    x = ', '.join([str(y) for y in x])
+    return(x)
+
+def remove_duplicity_gRNA_db(ab1_folder):
+    output_folder = os.path.join(ab1_folder, 'result')
+    for db in DATABASES_SEQ:
+        df_genes = load_gene_db(db.name)
+        new_df = df_genes.groupby('Sequence').agg(lambda x: fix_my_stuff(x)).reset_index()
+        new_df = new_df[['Number', 'Name', 'Sequence', 'Identifier']].sort_values(['Number'])
+        new_df.to_csv(os.path.join(output_folder, str(db.name) + '_new_db.csv'), index=False)
 
 
 def print_results_gene(ab1_folder):
@@ -386,11 +411,11 @@ def print_results_gene(ab1_folder):
 
     for read in DICT_READS:
         seq = DICT_READS[read]
-        data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number,
-                     seq.gene_score, seq.gene_sequence])
+        data.append([seq.name, seq.plate, seq.well, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
+        # data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
 
-    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene',
-                                         'Number', 'Gene_High_Score', 'Gene_Sequence'])
+    # df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+    df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
     df.to_excel(os.path.join(output_folder,'gene_result.xlsx'), index=False)
 
 
@@ -433,11 +458,22 @@ def identify_gene(ab1_folder, temp_path, start_time):
                         count_num_alignments +=1
 
                         if seq.gene_score < score:
+                            if str(seq.name).__contains__('MagicSanger286'):
+                                print(score, seq.gene_score, seq.gene_name, gene_rec.name)
                             seq.gene_score = score
                             seq.gene_name = str(gene_rec.name)
                             seq.gene_number = str(gene_rec.id)
                             seq.gene_sequence = str(gene_rec.seq).upper()
-                            # print('\n', seq.name, seq.db_name, seq.db_score, seq.gene_number, seq.gene_name, seq.gene_score, seq.gene_sequence)
+
+                        elif seq.gene_score == score:
+                            if str(seq.name).__contains__('MagicSanger286'):
+                                print(score, seq.gene_score, seq.gene_name, gene_rec.name)
+                            seq.gene_name = str(seq.gene_name) + ', ' + str(gene_rec.name)
+                            seq.gene_number = str(seq.gene_number) + ', ' + str(gene_rec.id)
+                            seq.gene_sequence = str(seq.gene_sequence) + ', ' + str(gene_rec.seq).upper()
+
+                            if str(seq.name).__contains__('MagicSanger286'):
+                                print(seq.name, seq.db_name, seq.db_score, seq.gene_number, seq.gene_name, seq.gene_score)
                         delta = int(time.time() - start_time)
                         print('Total alignments ' + str(count_num_alignments) + ' performed. '
                               + 'Working on database: ' + str(db.name) + ' #seq: ' + str(count_num_alignments)
@@ -479,6 +515,12 @@ def process_job_biopython(job_description):
                 read.gene_name = str(gene_rec.name)
                 read.gene_number = str(gene_rec.id)
                 read.gene_sequence = str(gene_rec.seq).upper()
+                DICT_READS[read.name] = read
+
+            elif read.gene_score == score:
+                read.gene_name = str(read.gene_name) + ', ' + str(gene_rec.name)
+                read.gene_number = str(read.gene_number) + ', ' + str(gene_rec.id)
+                read.gene_sequence = str(read.gene_sequence) + ', ' + str(gene_rec.seq).upper()
                 DICT_READS[read.name] = read
 
     job_description[4] = count_num_alignments
