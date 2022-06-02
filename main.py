@@ -2,29 +2,13 @@ import os.path
 import sys
 
 from sanger import sequencing, sanger
-from tkinter import *
-from tkinter import filedialog
+from ngs import ngs
+
 
 DATABASES_SEQ = sequencing.databases
 DICT_READS = {}
 
-# def select_path():
-#     folder_selected = filedialog.askdirectory(initialdir = "/",title = "Select file",)
-#
-# #Creating a object window
-# main = Tk()
-# main.geometry('500x500')
-#
-# frame1 = Frame(main)
-# frame1.pack(expand=True, fill=BOTH)
-#
-# button1 = Button(frame1, text='Select file', command=select_path)
-# button1.grid(row=2, column=0)
-#
-# button2 = Button(frame1, text='Select file')
-# button2.grid(row=4, column=0)
-
-def main(argv):
+def sanger_analysis(argv):
     '''Folder with sequencing reads'''
     # ab1_folder = '/home/flavia/Downloads/G_MART0122/magic_sanger_.ab1_files'
     # num_threads = 5
@@ -56,6 +40,16 @@ def main(argv):
 
     else:
         print(error)
+
+
+def ngs_analysis(argv):
+    ngs.fastq2fasta()
+
+
+def main(argv):
+    # sanger_analysis(argv)
+    ngs_analysis(argv)
+
 
 if __name__ == '__main__':
     main(sys.argv)
