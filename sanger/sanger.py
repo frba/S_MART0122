@@ -416,7 +416,7 @@ def print_results_gene(ab1_folder):
 
     # df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
     df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df.to_excel(os.path.join(output_folder,'gene_result.xlsx'), index=False)
+    df.to_csv(os.path.join(output_folder,'gene_result.csv'), index=False)
 
 
 def identify_gene(ab1_folder, temp_path, start_time):
@@ -484,7 +484,7 @@ def identify_gene(ab1_folder, temp_path, start_time):
 
 
 def process_job_biopython(job_description):
-    job_id, read, db, output_filepath, count_num_alignments = job_description
+    job_id, read, db, count_num_alignments = job_description
     df_genes = load_gene_db(db.name)
     '''Create a seq object for a consensus read'''
     consensus_fasta_read = SeqRecord(Seq(str(read.sequence).upper()),
@@ -523,7 +523,7 @@ def process_job_biopython(job_description):
                 read.gene_sequence = str(read.gene_sequence) + ', ' + str(gene_rec.seq).upper()
                 DICT_READS[read.name] = read
 
-    job_description[4] = count_num_alignments
+    job_description = job_id, read, db, count_num_alignments
     return job_description
 
 
@@ -572,9 +572,8 @@ def job_descriptions_generator():
     for db in DATABASES_SEQ:
         for read_name in DICT_READS:
             read = DICT_READS[read_name]
-            output_filepath = '/dev/shm/gene/temp' + str(job_id)
             if (str(read.db_name) == str(db.name)) and read.gene_score < 100:
-                job_description = [job_id, read, db, output_filepath, 0]
+                job_description = [job_id, read, db, 0]
                 job_id+=1
                 yield job_description
 
