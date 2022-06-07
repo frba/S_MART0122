@@ -355,10 +355,17 @@ def load_gene_db(db_label):
     # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
     # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
     # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
+
+    '''Local path Mac'''
+    activation_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Activation_new_db.csv'
+    deletion_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Deletion_new_db.csv'
+    interference_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Interference_new_db.csv'
+
+
     '''Compute canada path'''
-    activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
-    deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
-    interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
+    # activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
+    # deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
+    # interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
 
     # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
     # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
@@ -387,10 +394,12 @@ def mount_virtual_path(ab1_folder):
 
     return path
 
+
 def fix_my_stuff(x):
     x = x.tolist()
     x = ', '.join([str(y) for y in x])
     return(x)
+
 
 def remove_duplicity_gRNA_db(ab1_folder):
     output_folder = os.path.join(ab1_folder, 'result')
@@ -416,7 +425,9 @@ def print_results_gene(ab1_folder):
 
     # df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
     df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df.to_csv(os.path.join(output_folder,'gene_result.csv'), index=False)
+    df.to_csv(os.path.join(output_folder, 'gene_result.csv'), index=False)
+    DICT_READS.clear()
+    print('\nDB result file placed at: %s' % output_folder)
 
 
 def identify_gene(ab1_folder, temp_path, start_time):
@@ -486,6 +497,7 @@ def identify_gene(ab1_folder, temp_path, start_time):
 def process_job_biopython(job_description):
     job_id, read, db, count_num_alignments = job_description
     df_genes = load_gene_db(db.name)
+
     '''Create a seq object for a consensus read'''
     consensus_fasta_read = SeqRecord(Seq(str(read.sequence).upper()),
                                      name=read.name,
@@ -567,28 +579,29 @@ def process_job_mafft(job_description):
     return count_num_alignments
 
 
-def job_descriptions_generator():
+def job_descriptions_generator(DICT_READS):
     job_id = 0
     for db in DATABASES_SEQ:
+        print(f'Database: {db.name}')
         for read_name in DICT_READS:
             read = DICT_READS[read_name]
             if (str(read.db_name) == str(db.name)) and read.gene_score < 100:
                 job_description = [job_id, read, db, 0]
                 job_id+=1
-                yield job_description
+                yield (job_description)
 
 
-def identify_gene_parallel(num_threads):
+def identify_gene_parallel(num_threads, DICT_READS):
     start_time = round(time.time()*1000)
     count_total_alignments = 0
 
-    job_descriptions = job_descriptions_generator()
+    job_descriptions = job_descriptions_generator(DICT_READS)
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
         jobs = [executor.submit(process_job_biopython, job_description) for job_description in job_descriptions]
 
         for f in concurrent.futures.as_completed(jobs):
             job_description = f.result()
-            job_id, read, db, output_filepath, alignments_done = job_description
+            job_id, read, db, alignments_done = job_description
             DICT_READS[read.name] = read
             count_total_alignments+=alignments_done
 

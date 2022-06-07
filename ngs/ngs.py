@@ -78,12 +78,10 @@ def concatenate_consensus_db_identifier(ngs_folder):
     for ngs_exp_folder in natural_sort(os.listdir(ngs_folder)):
         if os.path.isdir(os.path.join(ngs_folder, ngs_exp_folder)):
             fasta_consensus_folder = os.path.join(ngs_folder, ngs_exp_folder)
-            print(f'Working on folder: {ngs_exp_folder}')
             count = 0
             for consensus_fasta_file in natural_sort(os.listdir(fasta_consensus_folder)):
                 if os.path.isfile(os.path.join(fasta_consensus_folder, consensus_fasta_file)):
                     count = count + 1
-                    print(count)
                     consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, consensus_fasta_file)), "fasta")
                     for db in DATABASES_SEQ:
                         output_folder = os.path.join(fasta_consensus_folder, db.name)
@@ -137,7 +135,7 @@ def process_job_identify_database(job_description):
                 score = score2
                 l_end = min(align2.aligned[0])[0]
                 r_end = max(align2.aligned[0])[1]
-            # print(read_temp.name, db.name, score1, score2, score)
+
             if read_temp.db_score < score:
                 read_temp.db_score = round(score, 0)
                 read_temp.db_name = db.name
@@ -178,7 +176,7 @@ def identify_database_parallel(num_threads, ngs_folder, file, output_path):
             delta = (round(time.time() * 1000) - start_time)
             print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
-                  + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score),)
+                  + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score), end="\r")
 
 
 def print_results_database(output_path):
@@ -199,8 +197,8 @@ def print_results_database(output_path):
         data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score])
 
     df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'High_score'])
-    df.to_csv(os.path.join(output_folder,'db_result.csv'), index=False)
-
+    df.to_csv(os.path.join(output_folder, 'db_result.csv'), index=False)
+    DICT_READS.clear()
     print('\nDB result file placed at: %s' % output_folder)
 
 
@@ -218,9 +216,7 @@ def load_read_from_db_result(database_path):
             read_temp.db_name = row[2]
             read_temp.db_sequence = row[3]
             read_temp.db_score = row[4]
-            plate_well = str(row[0]).upper().split('PLATE')[1]
-            read_temp.plate = plate_well.split('_')[1]
-            read_temp.well = plate_well.split('_')[2]
+            read_temp.gene_score = 0
             DICT_READS[row[0]] = read_temp
 
     return error, DICT_READS

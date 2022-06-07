@@ -44,28 +44,30 @@ def sanger_analysis(argv):
 
 
 def ngs_analysis(argv):
-    ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC/'
+    # ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC/'
     # ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/'
-    num_threads = 5
-    # ngs_folder = os.path.join(argv[1], 'Sanger_seq_test_data')
-    # num_threads = int(argv[2])
+    # num_threads = 50
+    ngs_folder = os.path.join(argv[1])
+    num_threads = int(argv[2])
 
     '''Identify database labels'''
-    for file in ngs.natural_sort(os.listdir(ngs_folder)):
-        if file.__contains__('.assembled.'):
-            output_path = os.path.join(ngs_folder, file.split('---')[0])
-            if not os.path.exists(output_path):
-                os.makedirs(output_path)
-            ngs.identify_database_parallel(num_threads, ngs_folder, file, output_path)
-            ngs.print_results_database(output_path)
+    # for file in ngs.natural_sort(os.listdir(ngs_folder)):
+    #     if file.__contains__('.assembled.'):
+    #         output_path = os.path.join(ngs_folder, file.split('---')[0])
+    #         if not os.path.exists(output_path):
+    #             os.makedirs(output_path)
+    #         ngs.identify_database_parallel(num_threads, ngs_folder, file, output_path)
+    #         ngs.print_results_database(output_path)
 
     '''Using consensus files add each one of the database identifier'''
     for file in ngs.natural_sort(os.listdir(ngs_folder)):
         if file.__contains__('.assembled.'):
+        # if file.__contains__('MI.M06648_0266.001.IDT_i7_11---IDT_i5_1.M3_1_R1.fastq.gz.assembled'):
             database_path = os.path.join(ngs_folder, file.split('---')[0])
             error, DICT_READS = ngs.load_read_from_db_result(database_path)
+            print(f'Load read from db result: {str(file.split("---")[0])}')
             if DICT_READS is not None:
-                sanger.identify_gene_parallel(num_threads)
+                sanger.identify_gene_parallel(num_threads, DICT_READS)
                 sanger.print_results_gene(database_path)
 
 
