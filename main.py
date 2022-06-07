@@ -67,8 +67,8 @@ def ngs_analysis(argv):
             error, DICT_READS = ngs.load_read_from_db_result(database_path)
             print(f'Load read from db result: {str(file.split("---")[0])}')
             if DICT_READS is not None:
-                sanger.identify_gene_parallel(num_threads, DICT_READS)
-                sanger.print_results_gene(database_path)
+                DICT_READS = sanger.identify_gene_parallel(num_threads, DICT_READS)
+                sanger.print_results_gene(database_path, DICT_READS)
 
 
 def main(argv):

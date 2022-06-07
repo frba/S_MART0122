@@ -410,7 +410,7 @@ def remove_duplicity_gRNA_db(ab1_folder):
         new_df.to_csv(os.path.join(output_folder, str(db.name) + '_new_db.csv'), index=False)
 
 
-def print_results_gene(ab1_folder):
+def print_results_gene(ab1_folder, DICT_READS):
     '''Functions receive a dictionary with Read object'''
     '''Every key in dictionary is associated to consensus read sequence'''
     data = []
@@ -610,3 +610,4 @@ def identify_gene_parallel(num_threads, DICT_READS):
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
                   + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
                   + ' ' + str(read.gene_number) + ' ' + str(read.gene_score),)
+    return DICT_READS
