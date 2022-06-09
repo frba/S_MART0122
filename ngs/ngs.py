@@ -1,17 +1,14 @@
-import os, pandas, gzip, numpy, time, re, concurrent.futures
-from concurrent.futures import ProcessPoolExecutor
-from Bio import SeqIO, AlignIO
-from Bio.Align.Applications import MafftCommandline
+import os, pandas, time, re, concurrent.futures, subprocess
+from Bio import SeqIO
 from Bio.Align import PairwiseAligner
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
+from Bio.Sequencing.Applications import BwaIndexCommandline
 from sanger import sequencing
 
 MAX_WORKERS = 10
 
 
 DATABASES_SEQ = sequencing.databases
-DICT_READS = {}
+# DICT_READS = {}
 
 
 def natural_sort(l):
@@ -119,13 +116,18 @@ def process_job_identify_database(job_description):
         if read_temp.db_score < 100:
             count_num_alignments += 1
             align1 = score_alignment(record.seq, db.seq)
+
             score1 = (align1.score / len(str(db.seq))) * 100
             score2 = -1
+            if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
+                print(align1, score1)
 
             if score1 < 100:
                 count_num_alignments += 1
-                align2 = score_alignment(record.reverse_complement().seq, db.seq)
+                align2 = score_alignment(record.seq, db.reverse_complement().seq)
                 score2 = (align2.score / len(str(db.seq))) * 100
+                if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
+                    print(align2, score2)
 
             if score1 > score2:
                 score = score1
@@ -143,8 +145,26 @@ def process_job_identify_database(job_description):
                 read_temp.db_right_end = r_end
                 read_temp.db_left_end = l_end
                 DICT_READS[read_temp.name] = read_temp
-
+    if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
+        print(read_temp.db_score, read_temp.db_left_end, read_temp.db_right_end)
     job_description = job_id, read_temp, record, ngs_folder, output_path, count_num_alignments
+    return job_description
+
+
+def process_job_identify_bwa_database(job_description):
+    job_id, ngs_folder, file, output_path, count_num_alignments = job_description
+
+    for db in DATABASES_SEQ:
+        db_file_path = db.description
+        print(db_file_path)
+
+        cmd = "bwa index " + str(db_file_path)
+        os.system(cmd)
+        cmd2 = "bwa mem " + str(db_file_path) + " " + os.path.join(ngs_folder, file) + " > " + os.path.join(output_path, 'align')
+        print(cmd2)
+        os.system(cmd2)
+
+    job_description = job_id, ngs_folder, file, output_path, count_num_alignments
     return job_description
 
 
@@ -159,24 +179,37 @@ def job_descriptions_database_generator(ngs_folder, file, output_path):
             yield job_description
 
 
+def job_descriptions_database_bwa_generator(ngs_folder, file, output_path):
+    job_id = 0
+    # with gzip.open(os.path.join(ngs_folder, file), "rt") as handle:
+    # with open(os.path.join(ngs_folder, file)) as handle:
+    #     for record in SeqIO.parse(handle, "fastq"):
+    #         read_temp = sequencing.Read(record.name, record.seq)
+    job_description = [job_id, ngs_folder, file, output_path, 0]
+    job_id += 1
+    yield job_description
+
+
 def identify_database_parallel(num_threads, ngs_folder, file, output_path):
     start_time = round(time.time()*1000)
     count_total_alignments = 0
 
-    job_descriptions = job_descriptions_database_generator(ngs_folder, file, output_path)
+    # job_descriptions = job_descriptions_database_generator(ngs_folder, file, output_path)
+    job_descriptions = job_descriptions_database_bwa_generator(ngs_folder, file, output_path)
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
-        jobs = [executor.submit(process_job_identify_database, job_description) for job_description in job_descriptions]
+        jobs = [executor.submit(process_job_identify_bwa_database, job_description) for job_description in job_descriptions]
 
         for f in concurrent.futures.as_completed(jobs):
             job_description = f.result()
-            job_id, read_temp, record, ngs_folder, output_path, alignments_done = job_description
-            DICT_READS[read_temp.name] = read_temp
-            count_total_alignments += alignments_done
+            # job_id, read_temp, record, ngs_folder, output_path, alignments_done = job_description
+            job_id, ngs_folder, file, output_path, count_num_alignments = job_description
+            # DICT_READS[read_temp.name] = read_temp
+            # count_total_alignments += alignments_done
 
-            delta = (round(time.time() * 1000) - start_time)
-            print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
-                  + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
-                  + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score), end="\r")
+            # delta = (round(time.time() * 1000) - start_time)
+            # print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
+            #       + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
+            #       + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score))
 
 
 def print_results_database(output_path):
@@ -203,13 +236,14 @@ def print_results_database(output_path):
 
 
 def load_read_from_db_result(database_path):
+    DICT_READS = {}
     error = ''
     input_file = os.path.join(database_path, 'result', 'db_result.csv')
     if not os.path.exists(input_file):
         error = 'File with Database results not found!'
         return error, None
     else:
-        df = pandas.read_csv(input_file)
+        df = pandas.read_csv(input_file).sort_values('Database')
 
         for idx, row in df.iterrows():
             read_temp = sequencing.Read(row[0], row[1])

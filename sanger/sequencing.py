@@ -5,17 +5,17 @@ from Bio.Seq import Seq
 db_activation_rec = SeqRecord(Seq("AATTTCTACTAAGTGTAGAT"),
                                     id="Activation_identifier",
                                     name="Activation",
-                                    description="")
+                                    description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/activation.fasta")
 
 db_deletion_rec = SeqRecord(Seq("GTTTTAGTACTCTGTAATTT"),
                                   id="Deletion_identifier",
                                   name="Deletion",
-                                  description="")
+                                  description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/deletion.fasta")
 
 db_interference_rec = SeqRecord(Seq("GTTTTAGAGCTAGAAATAGC"),
                                     id="Interference_identifier",
                                     name="Interference",
-                                    description="")
+                                    description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/interference.fasta")
 
 databases = [db_activation_rec, db_deletion_rec, db_interference_rec,]
 
@@ -36,7 +36,6 @@ class Read:
         self.gene_score = 0
         self.gene_number = ''
         self.gene_sequence = ''
-
 
     def add_db_info(self, db_name, db_score, db_sequence):
         self.db_name = db_name

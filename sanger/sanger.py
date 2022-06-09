@@ -1,5 +1,4 @@
-import concurrent.futures
-import os, pandas, numpy, time, re
+import os, pandas, numpy, time, re, concurrent.futures, subprocess, sys
 from . import sequencing
 from io import StringIO
 from Bio import SeqIO, AlignIO
@@ -7,11 +6,10 @@ from Bio.Align.Applications import MafftCommandline
 from Bio.Align import PairwiseAligner
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from tkinter import *
-from tkinter import filedialog
 
 DATABASES_SEQ = sequencing.databases
 DICT_READS = {}
+ARRAY_DF_GENES = []
 
 
 def natural_sort(l):
@@ -155,7 +153,6 @@ def concatenate_fwd_rev_fasta(ab1_folder):
                     print('Concatenate files: %s - %s' % (read_pair[0], read_pair[1]))
 
 
-
 def score_alignment(read_seq, identifier_seq):
     aligner = PairwiseAligner()
     aligner.mode = 'local'
@@ -277,7 +274,7 @@ def identify_database(ab1_folder):
 
                 if score1 < 100:
                     count_num_alignments += 1
-                    align2 = score_alignment(consensus_fasta_read.reverse_complement().seq, db.seq)
+                    align2 = score_alignment(consensus_fasta_read.seq, db.reverse_complement().seq)
                     score2 = (align2.score / len(str(db.seq))) * 100
 
                 if score1 > score2:
@@ -361,7 +358,6 @@ def load_gene_db(db_label):
     deletion_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Deletion_new_db.csv'
     interference_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Interference_new_db.csv'
 
-
     '''Compute canada path'''
     # activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
     # deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
@@ -420,12 +416,12 @@ def print_results_gene(ab1_folder, DICT_READS):
 
     for read in DICT_READS:
         seq = DICT_READS[read]
-        data.append([seq.name, seq.plate, seq.well, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
-        # data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
+        # data.append([seq.name, seq.plate, seq.well, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
+        data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
 
-    # df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df.to_csv(os.path.join(output_folder, 'gene_result.csv'), index=False)
+    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+    # df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+    df.to_csv(os.path.join(output_folder, 'gene_result.csv'), mode='a', index=False, header=False)
     DICT_READS.clear()
     print('\nDB result file placed at: %s' % output_folder)
 
@@ -513,13 +509,27 @@ def process_job_biopython(job_description):
         if read.gene_score < 100:
             count_num_alignments += 1
             '''Biopython alignment'''
-            align1 = score_alignment(consensus_fasta_read.seq, gene_rec.seq)
-            score1 = round((align1.score / len(str(gene_rec.seq))) * 100, 0)
+            try:
+                align1 = score_alignment(consensus_fasta_read.seq, gene_rec.seq)
+                score1 = round((align1.score / len(str(gene_rec.seq))) * 100, 0)
+                score2 = -1
+            except ValueError:
+                job_description = job_id, read, db, count_num_alignments
+                read.gene_score = 0
+                read.gene_name = 'ALIGNMENT ERROR'
+                read.gene_number = ''
+                return job_description
 
             if score1 < 100:
-                align2 = score_alignment(consensus_fasta_read.reverse_complement().seq, gene_rec.seq)
-                score2 = round((align2.score / len(str(gene_rec.seq))) * 100, 0)
-
+                try:
+                    align2 = score_alignment(consensus_fasta_read.seq, gene_rec.reverse_complement().seq)
+                    score2 = round((align2.score / len(str(gene_rec.seq))) * 100, 0)
+                except ValueError:
+                    job_description = job_id, read, db, count_num_alignments
+                    read.gene_score = 0
+                    read.gene_name = 'ALIGNMENT ERROR'
+                    read.gene_number = ''
+                    return job_description
             score = max(score1, score2)
 
             if read.gene_score < score:
@@ -527,13 +537,11 @@ def process_job_biopython(job_description):
                 read.gene_name = str(gene_rec.name)
                 read.gene_number = str(gene_rec.id)
                 read.gene_sequence = str(gene_rec.seq).upper()
-                DICT_READS[read.name] = read
 
             elif read.gene_score == score:
                 read.gene_name = str(read.gene_name) + ', ' + str(gene_rec.name)
                 read.gene_number = str(read.gene_number) + ', ' + str(gene_rec.id)
                 read.gene_sequence = str(read.gene_sequence) + ', ' + str(gene_rec.seq).upper()
-                DICT_READS[read.name] = read
 
     job_description = job_id, read, db, count_num_alignments
     return job_description
@@ -580,15 +588,15 @@ def process_job_mafft(job_description):
 
 
 def job_descriptions_generator(DICT_READS):
-    job_id = 0
+    job_id = 1
     for db in DATABASES_SEQ:
-        print(f'Database: {db.name}')
         for read_name in DICT_READS:
             read = DICT_READS[read_name]
-            if (str(read.db_name) == str(db.name)) and read.gene_score < 100:
-                job_description = [job_id, read, db, 0]
-                job_id+=1
-                yield (job_description)
+            if str(read.db_name) == str(db.name):
+                job_id += 1
+                if 1000 > job_id >= 100:
+                    job_description = [job_id, read, db, 0]
+                    yield (job_description)
 
 
 def identify_gene_parallel(num_threads, DICT_READS):
@@ -596,6 +604,7 @@ def identify_gene_parallel(num_threads, DICT_READS):
     count_total_alignments = 0
 
     job_descriptions = job_descriptions_generator(DICT_READS)
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
         jobs = [executor.submit(process_job_biopython, job_description) for job_description in job_descriptions]
 
@@ -603,11 +612,12 @@ def identify_gene_parallel(num_threads, DICT_READS):
             job_description = f.result()
             job_id, read, db, alignments_done = job_description
             DICT_READS[read.name] = read
-            count_total_alignments+=alignments_done
+            count_total_alignments += alignments_done
 
             delta = (round(time.time() * 1000) - start_time)
-            print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
+            print('Job ID: ' + str(job_id) + ' Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
                   + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
                   + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
-                  + ' ' + str(read.gene_number) + ' ' + str(read.gene_score),)
+                  + ' ' + str(read.gene_number) + ' ' + str(read.gene_score))
+
     return DICT_READS

@@ -1,12 +1,11 @@
-import os.path
-import sys
-
+import os, sys
+import queue
+from queue import Queue
 from sanger import sequencing, sanger
 from ngs import ngs
 
 
 DATABASES_SEQ = sequencing.databases
-DICT_READS = {}
 
 
 def sanger_analysis(argv):
@@ -44,11 +43,11 @@ def sanger_analysis(argv):
 
 
 def ngs_analysis(argv):
-    # ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC/'
+    ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC/'
     # ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/'
-    # num_threads = 50
-    ngs_folder = os.path.join(argv[1])
-    num_threads = int(argv[2])
+    num_threads = 8
+    # ngs_folder = os.path.join(argv[1])
+    # num_threads = int(argv[2])
 
     '''Identify database labels'''
     # for file in ngs.natural_sort(os.listdir(ngs_folder)):
@@ -66,6 +65,7 @@ def ngs_analysis(argv):
             database_path = os.path.join(ngs_folder, file.split('---')[0])
             error, DICT_READS = ngs.load_read_from_db_result(database_path)
             print(f'Load read from db result: {str(file.split("---")[0])}')
+
             if DICT_READS is not None:
                 DICT_READS = sanger.identify_gene_parallel(num_threads, DICT_READS)
                 sanger.print_results_gene(database_path, DICT_READS)
