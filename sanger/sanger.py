@@ -1,4 +1,5 @@
 import os, pandas, numpy, time, re, concurrent.futures, subprocess, sys
+from datetime import datetime
 from . import sequencing
 from io import StringIO
 from Bio import SeqIO, AlignIO
@@ -406,26 +407,6 @@ def remove_duplicity_gRNA_db(ab1_folder):
         new_df.to_csv(os.path.join(output_folder, str(db.name) + '_new_db.csv'), index=False)
 
 
-def print_results_gene(ab1_folder, DICT_READS):
-    '''Functions receive a dictionary with Read object'''
-    '''Every key in dictionary is associated to consensus read sequence'''
-    data = []
-    output_folder = os.path.join(ab1_folder, 'result')
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
-    for read in DICT_READS:
-        seq = DICT_READS[read]
-        # data.append([seq.name, seq.plate, seq.well, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
-        data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
-
-    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    # df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
-    df.to_csv(os.path.join(output_folder, 'gene_result.csv'), mode='a', index=False, header=False)
-    DICT_READS.clear()
-    print('\nDB result file placed at: %s' % output_folder)
-
-
 def identify_gene(ab1_folder, temp_path, start_time):
     output_filepath = os.path.join(temp_path, 'temp.fa')
     open(output_filepath, 'w').close()
@@ -588,15 +569,15 @@ def process_job_mafft(job_description):
 
 
 def job_descriptions_generator(DICT_READS):
-    job_id = 1
+    job_id = 0
     for db in DATABASES_SEQ:
         for read_name in DICT_READS:
             read = DICT_READS[read_name]
             if str(read.db_name) == str(db.name):
                 job_id += 1
-                if 1000 > job_id >= 100:
-                    job_description = [job_id, read, db, 0]
-                    yield (job_description)
+                # if job_id < 100000:
+                job_description = [job_id, read, db, 0]
+                yield (job_description)
 
 
 def identify_gene_parallel(num_threads, DICT_READS):
@@ -621,3 +602,25 @@ def identify_gene_parallel(num_threads, DICT_READS):
                   + ' ' + str(read.gene_number) + ' ' + str(read.gene_score))
 
     return DICT_READS
+
+
+def print_results_gene(ab1_folder, DICT_READS):
+    '''Functions receive a dictionary with Read object'''
+    '''Every key in dictionary is associated to consensus read sequence'''
+    data = []
+    date_time = datetime.now().strftime("%Y-%m-%d_%H.%M.%S")
+    output_folder = os.path.join(ab1_folder, 'result')
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
+
+    for read in DICT_READS:
+        seq = DICT_READS[read]
+        # data.append([seq.name, seq.plate, seq.well, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
+        data.append([seq.name, seq.sequence, seq.db_name, seq.db_sequence, seq.db_score, seq.gene_name, seq.gene_number, seq.gene_score, seq.gene_sequence])
+
+    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+    # df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+
+    df.to_csv(os.path.join(output_folder, 'gene_result_'+date_time+'.csv'), index=False)
+    DICT_READS.clear()
+    print('\nDB result file placed at: %s' % output_folder)

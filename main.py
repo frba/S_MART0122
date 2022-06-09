@@ -61,7 +61,7 @@ def ngs_analysis(argv):
     '''Using consensus files add each one of the database identifier'''
     for file in ngs.natural_sort(os.listdir(ngs_folder)):
         if file.__contains__('.assembled.'):
-        # if file.__contains__('MI.M06648_0266.001.IDT_i7_11---IDT_i5_1.M3_1_R1.fastq.gz.assembled'):
+        # if file.__contains__('MI.M06648_0266.001.IDT_i7_1---IDT_i5_1.M1_1_R1.fastq.gz.assembled'):
             database_path = os.path.join(ngs_folder, file.split('---')[0])
             error, DICT_READS = ngs.load_read_from_db_result(database_path)
             print(f'Load read from db result: {str(file.split("---")[0])}')
