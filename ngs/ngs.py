@@ -1,21 +1,15 @@
-import os, pandas, time, re, concurrent.futures, subprocess
+import os, pandas, time, concurrent.futures, gc, queue
+import multiprocessing as mp
+from datetime import datetime
 from Bio import SeqIO
 from Bio.Align import PairwiseAligner
-from Bio.Sequencing.Applications import BwaIndexCommandline
-from sanger import sequencing
-
-MAX_WORKERS = 10
+from data_parser import sequencing, parser
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 
 DATABASES_SEQ = sequencing.databases
-# DICT_READS = {}
-
-
-def natural_sort(l):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
-    return sorted(l, key = alphanum_key)
-
+q = queue.Queue()
 
 def process_task(task_description):
     task_id, record, output_path = task_description
@@ -26,7 +20,7 @@ def process_task(task_description):
 
 def create_task(path):
     task_id = 1
-    for file in natural_sort(os.listdir(path)):
+    for file in parser.natural_sort(os.listdir(path)):
         if file.__contains__('.assembled.'):
             output_path = os.path.join(path, file.split('---')[0])
             if not os.path.exists(output_path):
@@ -53,7 +47,7 @@ def create_task(path):
 def fastq2fasta(path):
     # path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC'
 
-    for file in natural_sort(os.listdir(path)):
+    for file in parser.natural_sort(os.listdir(path)):
         if file.__contains__('.assembled.'):
             output_path = os.path.join(path, file.split('---')[0])
             if not os.path.exists(output_path):
@@ -72,11 +66,11 @@ def fastq2fasta(path):
 
 
 def concatenate_consensus_db_identifier(ngs_folder):
-    for ngs_exp_folder in natural_sort(os.listdir(ngs_folder)):
+    for ngs_exp_folder in parser.natural_sort(os.listdir(ngs_folder)):
         if os.path.isdir(os.path.join(ngs_folder, ngs_exp_folder)):
             fasta_consensus_folder = os.path.join(ngs_folder, ngs_exp_folder)
             count = 0
-            for consensus_fasta_file in natural_sort(os.listdir(fasta_consensus_folder)):
+            for consensus_fasta_file in parser.natural_sort(os.listdir(fasta_consensus_folder)):
                 if os.path.isfile(os.path.join(fasta_consensus_folder, consensus_fasta_file)):
                     count = count + 1
                     consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, consensus_fasta_file)), "fasta")
@@ -108,26 +102,17 @@ def process_job_identify_database(job_description):
     job_id, read_temp, record, ngs_folder, output_path, count_num_alignments = job_description
 
     for db in DATABASES_SEQ:
-        # if read_temp.name in DICT_READS:
-        #     read_temp = DICT_READS[read_temp.name]
-        # else:
-        #     read_temp = sequencing.Read(read_temp.name, read_temp.sequence)
-
         if read_temp.db_score < 100:
             count_num_alignments += 1
             align1 = score_alignment(record.seq, db.seq)
 
             score1 = (align1.score / len(str(db.seq))) * 100
             score2 = -1
-            if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
-                print(align1, score1)
 
             if score1 < 100:
                 count_num_alignments += 1
                 align2 = score_alignment(record.seq, db.reverse_complement().seq)
                 score2 = (align2.score / len(str(db.seq))) * 100
-                if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
-                    print(align2, score2)
 
             if score1 > score2:
                 score = score1
@@ -144,27 +129,8 @@ def process_job_identify_database(job_description):
                 read_temp.db_sequence = str(db.seq).upper()
                 read_temp.db_right_end = r_end
                 read_temp.db_left_end = l_end
-                DICT_READS[read_temp.name] = read_temp
-    if read_temp.name == 'M06648:266:000000000-K99CN:1:1101:13591:1187':
-        print(read_temp.db_score, read_temp.db_left_end, read_temp.db_right_end)
+
     job_description = job_id, read_temp, record, ngs_folder, output_path, count_num_alignments
-    return job_description
-
-
-def process_job_identify_bwa_database(job_description):
-    job_id, ngs_folder, file, output_path, count_num_alignments = job_description
-
-    for db in DATABASES_SEQ:
-        db_file_path = db.description
-        print(db_file_path)
-
-        cmd = "bwa index " + str(db_file_path)
-        os.system(cmd)
-        cmd2 = "bwa mem " + str(db_file_path) + " " + os.path.join(ngs_folder, file) + " > " + os.path.join(output_path, 'align')
-        print(cmd2)
-        os.system(cmd2)
-
-    job_description = job_id, ngs_folder, file, output_path, count_num_alignments
     return job_description
 
 
@@ -179,42 +145,29 @@ def job_descriptions_database_generator(ngs_folder, file, output_path):
             yield job_description
 
 
-def job_descriptions_database_bwa_generator(ngs_folder, file, output_path):
-    job_id = 0
-    # with gzip.open(os.path.join(ngs_folder, file), "rt") as handle:
-    # with open(os.path.join(ngs_folder, file)) as handle:
-    #     for record in SeqIO.parse(handle, "fastq"):
-    #         read_temp = sequencing.Read(record.name, record.seq)
-    job_description = [job_id, ngs_folder, file, output_path, 0]
-    job_id += 1
-    yield job_description
-
-
-def identify_database_parallel(num_threads, ngs_folder, file, output_path):
+def identify_database_parallel(num_threads, ngs_folder, file, DICT_READS, output_path):
     start_time = round(time.time()*1000)
     count_total_alignments = 0
 
-    # job_descriptions = job_descriptions_database_generator(ngs_folder, file, output_path)
-    job_descriptions = job_descriptions_database_bwa_generator(ngs_folder, file, output_path)
+    job_descriptions = job_descriptions_database_generator(ngs_folder, file, output_path)
     with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
-        jobs = [executor.submit(process_job_identify_bwa_database, job_description) for job_description in job_descriptions]
+        jobs = [executor.submit(process_job_identify_database, job_description) for job_description in job_descriptions]
 
         for f in concurrent.futures.as_completed(jobs):
             job_description = f.result()
-            # job_id, read_temp, record, ngs_folder, output_path, alignments_done = job_description
-            job_id, ngs_folder, file, output_path, count_num_alignments = job_description
-            # DICT_READS[read_temp.name] = read_temp
-            # count_total_alignments += alignments_done
+            job_id, read_temp, record, ngs_folder, output_path, alignments_done = job_description
+            DICT_READS[read_temp.name] = read_temp
+            count_total_alignments += alignments_done
 
-            # delta = (round(time.time() * 1000) - start_time)
-            # print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
-            #       + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
-            #       + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score))
+            delta = (round(time.time() * 1000) - start_time)
+            print('Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
+                  + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
+                  + str(read_temp.name) + ' ' + str(read_temp.db_name) + ' ' + str(read_temp.db_score))
+    return DICT_READS
 
-
-def print_results_database(output_path):
-    '''Functions receive a dictionary with Read object'''
-    '''Every key in dictionary is associated to consensus read sequence'''
+def print_results_database(output_path, DICT_READS):
+    '''Functions receive a dictionary with Read object
+    Every key in dictionary is associated to consensus read sequence'''
     data = []
     output_folder = os.path.join(output_path, 'result')
     if not os.path.exists(output_folder):
@@ -238,12 +191,20 @@ def print_results_database(output_path):
 def load_read_from_db_result(database_path):
     DICT_READS = {}
     error = ''
-    input_file = os.path.join(database_path, 'result', 'db_result.csv')
+    input_file = os.path.join(database_path, 'result', 'db_result-3.csv')
+    resume_result_gene_file = os.path.join(database_path, 'result', 'gene_result-3.csv')
+
     if not os.path.exists(input_file):
         error = 'File with Database results not found!'
         return error, None
     else:
         df = pandas.read_csv(input_file).sort_values('Database')
+        print(df)
+        if os.path.exists(resume_result_gene_file):
+            df_gene_result = pandas.read_csv(resume_result_gene_file).sort_values('Database')
+            print(df_gene_result)
+            df_left = pandas.concat([df_gene_result, df]).drop_duplicates(subset=['Read', 'R_Sequence'], keep=False)
+
 
         for idx, row in df.iterrows():
             read_temp = sequencing.Read(row[0], row[1])
@@ -254,3 +215,115 @@ def load_read_from_db_result(database_path):
             DICT_READS[row[0]] = read_temp
 
     return error, DICT_READS
+
+
+def process_job_biopython(job_description):
+    job_id, read, db, count_num_alignments = job_description
+    df_genes = parser.load_gene_db(db.name)
+
+    '''Create a seq object for a consensus read'''
+    consensus_fasta_read = SeqRecord(Seq(str(read.sequence).upper()).reverse_complement(),
+                                     name=read.name,
+                                     description="")
+
+    for idx, row in df_genes.iterrows():
+        '''Create a seq object for a gene'''
+        gene_rec = SeqRecord(Seq(str(row['Sequence']).upper()),
+                             id=str(row['Number']),
+                             name=str(row['Name']),
+                             description="")
+
+        if read.gene_score < 100:
+            count_num_alignments += 1
+            '''Biopython alignment'''
+            try:
+                align1 = score_alignment(consensus_fasta_read.seq, gene_rec.seq)
+                score1 = round((align1.score / len(str(gene_rec.seq))) * 100, 0)
+            except ValueError:
+                job_description = job_id, read, db, count_num_alignments
+                read.gene_score = 0
+                read.gene_name = 'ALIGNMENT ERROR'
+                read.gene_number = ''
+                return job_description
+
+            if read.gene_score < score1:
+                read.gene_score = score1
+                read.gene_name = str(gene_rec.name)
+                read.gene_number = str(gene_rec.id)
+                read.gene_sequence = str(gene_rec.seq).upper()
+
+    job_description = job_id, read, db, count_num_alignments
+    del df_genes
+    gc.collect()
+    return job_description
+
+
+def job_descriptions_generator(DICT_READS):
+    job_descriptions = []
+    job_id = 0
+    for db in DATABASES_SEQ:
+        for read_name in DICT_READS:
+            read = DICT_READS[read_name]
+            if str(read.db_name) == str(db.name):
+                job_id += 1
+                job_description = [job_id, read, db, 0]
+                job_descriptions.append(job_description)
+    return job_descriptions
+
+
+def add_to_queue(job_description):
+    q.put(job_description)
+
+
+def process_queue(args, DICT_READS, count_total_alignments):
+    database_path, num_jobs, start_time = args
+    delta = (round(time.time() * 1000) - start_time)
+    job_id, read, db, alignments_done = q.get()
+    count_total_alignments += alignments_done
+    DICT_READS[read.name] = read
+
+    print('Job ID: ' + str(job_id) + ' Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
+          + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
+          + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
+          + ' ' + str(read.gene_number) + ' ' + str(read.gene_score))
+    print_results_from_queue(database_path, read)
+    q.task_done()
+    return count_total_alignments, DICT_READS
+
+
+def identify_gene_parallel(num_threads, database_path, DICT_READS):
+    start_time = round(time.time()*1000)
+    count_total_alignments = 0
+    #Creates job descriptions for each read
+    job_descriptions = job_descriptions_generator(DICT_READS)
+    print(f'Total of jobs: {len(job_descriptions)}' )
+    args = database_path, len(job_descriptions), start_time
+    pool = mp.Pool(processes=num_threads)
+
+    #run the jobs and add the result in a queue
+    results = [pool.apply_async(process_job_biopython, args=(job_description,), callback = add_to_queue) for job_description in job_descriptions]
+
+    for _ in results:
+        #for each job finalized, the results are get from the queue and write in a result file.
+        count_total_alignments, DICT_READS = process_queue(args, DICT_READS, count_total_alignments)
+
+    return DICT_READS
+
+
+def print_results_from_queue(ab1_folder, read):
+    data = []
+    date_time = datetime.now().strftime("%Y-%m-%d")
+    output_folder = os.path.join(ab1_folder, 'result')
+    filepath = os.path.join(output_folder, 'gene_result_3_' + date_time + '.csv')
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
+
+    data.append([read.name, read.sequence, read.db_name, read.db_sequence, read.db_score, read.gene_name, read.gene_number, read.gene_score, read.gene_sequence])
+
+    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
+
+    if os.path.isfile(filepath):
+        with open(filepath, 'a') as f:
+            df.to_csv(f, header=False, index=False)
+    else:
+        df.to_csv(filepath, index=False)

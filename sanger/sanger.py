@@ -1,6 +1,8 @@
-import os, pandas, numpy, time, re, concurrent.futures, subprocess, sys
+import os, pandas, numpy, time, re, concurrent.futures, gc, queue
+import multiprocessing as mp
+import linecache, tracemalloc
 from datetime import datetime
-from . import sequencing
+from data_parser import sequencing, parser
 from io import StringIO
 from Bio import SeqIO, AlignIO
 from Bio.Align.Applications import MafftCommandline
@@ -9,149 +11,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 DATABASES_SEQ = sequencing.databases
-DICT_READS = {}
-ARRAY_DF_GENES = []
-
-
-def natural_sort(l):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
-    return sorted(l, key = alphanum_key)
-
-
-def convert_ab12fasta(ab1_folder):
-    '''Function converts ab1 files to fasta'''
-
-    '''Check if output directory exists'''
-    output_folder = os.path.join(ab1_folder, 'fasta')
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
-    '''Convert ab1 to fasta using biopython'''
-    for ab1_file in natural_sort(os.listdir(ab1_folder)):
-        if ab1_file.endswith('.ab1'):
-            try:
-                records = SeqIO.parse(os.path.join(ab1_folder, ab1_file), "abi-trim")
-                count = SeqIO.write(records, os.path.join(output_folder, ab1_file[:-4] + '.fa'), "fasta")
-                # print("%s Converted %i records" % (ab1_file, count))
-            except:
-                print(ab1_file + ' could not be converted.')
-
-
-def get_trim_idx_left(read_quals, quality_threshold):
-    '''
-    :param read_quals:
-    :param quality_threshold:
-    :return:
-    https://cutadapt.readthedocs.io/en/stable/algorithms.html#quality-trimming-algorithm
-    '''
-    read_quals_reduced = [i - quality_threshold for i in read_quals]
-    sum = 0
-    for x in range(0, len(read_quals_reduced)):
-        sum += read_quals_reduced[x]
-        if sum > 0:
-            return x
-    return 0
-
-
-def get_trim_idx_right(read_quals, quality_threshold):
-    read_quals_reduced = []
-    sum = 0
-    for i in range(len(read_quals)-1, 0, -1):
-        quality = read_quals[i] - quality_threshold
-        read_quals_reduced.append(quality)
-    for x in range(0, len(read_quals_reduced)):
-        sum += read_quals_reduced[x]
-        if sum > 0:
-            idx = (len(read_quals_reduced)-1) - x
-            return idx
-    return len(read_quals_reduced)-1
-
-
-def convert_ab12fastq(ab1_folder, quality_threshold):
-    '''Files are created in output folder named fastq'''
-
-    '''Check if output directory exists'''
-    output_folder = os.path.join(ab1_folder, 'fastq')
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
-    '''Check if output directory exists'''
-    output_trimmed_folder = os.path.join(ab1_folder, 'fasta_trimmed')
-    if not os.path.exists(output_trimmed_folder):
-        os.mkdir(output_trimmed_folder)
-
-    '''Check if quality output directory exists'''
-    output_quality_trimmed_folder = os.path.join(ab1_folder, 'fasta_trimmed_quality')
-    if not os.path.exists(output_quality_trimmed_folder):
-        os.mkdir(output_quality_trimmed_folder)
-
-    '''Convert ab1 to fasta using biopython'''
-    for ab1_file in natural_sort(os.listdir(ab1_folder)):
-        if ab1_file.endswith('.ab1'):
-            try:
-                records = SeqIO.parse(os.path.join(ab1_folder, ab1_file), "abi-trim")
-                count = SeqIO.write(records, os.path.join(output_folder, ab1_file[:-4] + '.fastq'), "fastq")
-
-                for rec in SeqIO.parse(os.path.join(output_folder, ab1_file[:-4] + '.fastq'), "fastq"):
-                    new_rec = ''
-                    read_quals = rec.letter_annotations['phred_quality']
-
-                    l_idx_trimm = get_trim_idx_left(read_quals, quality_threshold)
-                    r_idx_trimm = get_trim_idx_right(read_quals, quality_threshold)
-
-                    for idx in range(l_idx_trimm, r_idx_trimm+1):
-                        new_rec += rec.seq[idx]
-
-                    trimmed_rec = SeqRecord(Seq(new_rec),
-                                                id=rec.id,
-                                                name=rec.name,
-                                                description=ab1_file[:-4])
-
-                    if len(trimmed_rec.seq) == len(read_quals[l_idx_trimm:r_idx_trimm+1]):
-                        print(ab1_file, len(rec.seq), len(trimmed_rec.seq), len(read_quals[l_idx_trimm:r_idx_trimm+1]))
-                    else:
-                        print(ab1_file, len(rec.seq), len(trimmed_rec.seq), len(read_quals[l_idx_trimm:r_idx_trimm+1]) + ' ERROR')
-
-                    count = SeqIO.write(trimmed_rec, os.path.join(output_trimmed_folder, ab1_file[:-4] + '.fa'), "fasta")
-                    with open(os.path.join(output_quality_trimmed_folder, ab1_file[:-4] + '.qual'), "w") as quality_handle:
-                        quality_handle.write(str(read_quals[l_idx_trimm:r_idx_trimm+1])[+1:-1])
-                # print("%s Converted %i records" % (ab1_file, count))
-            except:
-                print(ab1_file + ' could not be converted.')
-                # pass
-
-
-def concatenate_fwd_rev_fasta(ab1_folder):
-    '''Using fasta files to copy forward and reverse sequencing read in an unique fasta file
-    the output files are created in the folder named pair
-    Forward reads MUST BE added first in the file then reverse!!!
-    MAFFT assumes the first added sequence as the correct direction.
-    '''
-    filename_lenght_to_compare = 14
-    '''Check if output directory exists'''
-    output_folder = os.path.join(ab1_folder, 'pair')
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
-    fasta_folder = os.path.join(ab1_folder, 'fasta_trimmed')
-    '''Mafft is affected by the order the sequences are added in file'''
-    for fasta_file in natural_sort(os.listdir(fasta_folder)):
-        read_pair = []
-        if len(read_pair) == 0 and fasta_file.__contains__('_518_'):
-            read_pair.append(fasta_file)
-            for fasta_file in natural_sort(os.listdir(fasta_folder)):
-                if fasta_file.__contains__('_520_') \
-                        and read_pair[0][-filename_lenght_to_compare:] == fasta_file[-filename_lenght_to_compare:]:
-                    read_pair.append(fasta_file)
-
-                    fasta_read1 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[0])), "fasta")
-                    fasta_read2 = SeqIO.read(open(os.path.join(ab1_folder, 'fasta_trimmed', read_pair[1])), "fasta")
-
-                    with open(os.path.join(output_folder, read_pair[0][:-3] + '_' + read_pair[1][:-3] + '.fa'), 'w') \
-                        as handle:
-                        SeqIO.write([fasta_read1, fasta_read2], handle, 'fasta')
-                    print('Concatenate files: %s - %s' % (read_pair[0], read_pair[1]))
+q = queue.Queue()
 
 
 def score_alignment(read_seq, identifier_seq):
@@ -208,7 +68,7 @@ def consensus_pairwise_alignment(ab1_folder):
     if not os.path.exists(output_folder_fasta):
         os.mkdir(output_folder_fasta)
 
-    for pair_fasta_file in natural_sort(os.listdir(pair_fasta_folder)):
+    for pair_fasta_file in parser.natural_sort(os.listdir(pair_fasta_folder)):
         file_path = os.path.join(pair_fasta_folder, pair_fasta_file)
         #lep is used to penalize internal gaps more strongly than terminal gaps
         mafft_cline = MafftCommandline(adjustdirection=True, localpair=True, lep=-0.5, input=file_path)
@@ -235,21 +95,6 @@ def consensus_pairwise_alignment(ab1_folder):
             SeqIO.write(consensus_rec, handle_consensus, 'fasta')
 
 
-def concatenate_consensus_db_identifier(ab1_folder):
-    fasta_consensus_folder = os.path.join(ab1_folder, 'fasta_consensus')
-    for consensus_fasta_file in natural_sort(os.listdir(fasta_consensus_folder)):
-        if os.path.isfile(os.path.join(fasta_consensus_folder, consensus_fasta_file)):
-            consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, consensus_fasta_file)), "fasta")
-            for db in DATABASES_SEQ:
-                output_folder = os.path.join(fasta_consensus_folder, db.name)
-                if not os.path.exists(output_folder):
-                    os.mkdir(output_folder)
-
-                with open(os.path.join(output_folder, consensus_fasta_read.name + '_' + db.name + '.fa'), 'w') \
-                        as handle:
-                    SeqIO.write([consensus_fasta_read, db], handle, 'fasta')
-
-
 def identify_database(ab1_folder):
     start_time = round(time.time()*1000)
     count_num_alignments = 0
@@ -258,7 +103,7 @@ def identify_database(ab1_folder):
     for db in DATABASES_SEQ:
         fasta_consensus_db_folder = os.path.join(ab1_folder, 'fasta_consensus', db.name)
 
-        for consensus_fasta_db_file in natural_sort(os.listdir(fasta_consensus_db_folder)):
+        for consensus_fasta_db_file in parser.natural_sort(os.listdir(fasta_consensus_db_folder)):
             read_label = str(consensus_fasta_db_file).replace(str('_' + db.name), '')
             consensus_fasta_read = SeqIO.read(open(os.path.join(fasta_consensus_folder, read_label)), "fasta")
 
@@ -301,6 +146,7 @@ def identify_database(ab1_folder):
                       + str(round(count_num_alignments * 1000 / delta, 0)) + ' alignments/sec')
 
     return DICT_READS
+
 
 
 def print_results_database(ab1_folder):
@@ -348,39 +194,6 @@ def load_read_from_db_result(ab1_folder):
     return error, DICT_READS
 
 
-def load_gene_db(db_label):
-    '''Local path'''
-    # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
-    # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
-    # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
-
-    '''Local path Mac'''
-    activation_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Activation_new_db.csv'
-    deletion_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Deletion_new_db.csv'
-    interference_file_path = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/Interference_new_db.csv'
-
-    '''Compute canada path'''
-    # activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation_new_db.csv'
-    # deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion_new_db.csv'
-    # interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference_new_db.csv'
-
-    # activation_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
-    # deletion_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
-    # interference_file_path = '/home/flavia/Downloads/G_MART0122/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
-    # activation_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Activation gRNA database.csv'
-    # deletion_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Deletion gRNA datatbase.csv'
-    # interference_file_path = '/home/frba/scratch/gRNA_barcode information-20220120T180349Z-001/gRNA_barcode information/Interference gRNA database.csv'
-
-    if db_label == 'Activation':
-        df = pandas.read_csv(activation_file_path)
-        return df
-    elif db_label == 'Deletion':
-        df = pandas.read_csv(deletion_file_path)
-        return df
-    else:
-        df = pandas.read_csv(interference_file_path)
-        return df
-
 def mount_virtual_path(ab1_folder):
     # path = '/mnt/ram'
     # cmd = 'mount -t ramfs -o size=20m ramfs /mnt/ram'
@@ -392,21 +205,6 @@ def mount_virtual_path(ab1_folder):
     return path
 
 
-def fix_my_stuff(x):
-    x = x.tolist()
-    x = ', '.join([str(y) for y in x])
-    return(x)
-
-
-def remove_duplicity_gRNA_db(ab1_folder):
-    output_folder = os.path.join(ab1_folder, 'result')
-    for db in DATABASES_SEQ:
-        df_genes = load_gene_db(db.name)
-        new_df = df_genes.groupby('Sequence').agg(lambda x: fix_my_stuff(x)).reset_index()
-        new_df = new_df[['Number', 'Name', 'Sequence', 'Identifier']].sort_values(['Number'])
-        new_df.to_csv(os.path.join(output_folder, str(db.name) + '_new_db.csv'), index=False)
-
-
 def identify_gene(ab1_folder, temp_path, start_time):
     output_filepath = os.path.join(temp_path, 'temp.fa')
     open(output_filepath, 'w').close()
@@ -414,7 +212,7 @@ def identify_gene(ab1_folder, temp_path, start_time):
 
     with open(output_filepath, 'r+') as handle:
         for db in DATABASES_SEQ:
-            df_genes = load_gene_db(db.name)
+            df_genes = parser.load_gene_db(db.name)
             for read in DICT_READS:
                 seq_count = 0
                 '''Create a seq object for a seq'''
@@ -471,67 +269,10 @@ def identify_gene(ab1_folder, temp_path, start_time):
     return DICT_READS
 
 
-def process_job_biopython(job_description):
-    job_id, read, db, count_num_alignments = job_description
-    df_genes = load_gene_db(db.name)
-
-    '''Create a seq object for a consensus read'''
-    consensus_fasta_read = SeqRecord(Seq(str(read.sequence).upper()),
-                                     name=read.name,
-                                     description="")
-
-    for idx, row in df_genes.iterrows():
-        '''Create a seq object for a gene'''
-        gene_rec = SeqRecord(Seq(str(row['Sequence']).upper()),
-                             id=str(row['Number']),
-                             name=str(row['Name']),
-                             description="")
-
-        if read.gene_score < 100:
-            count_num_alignments += 1
-            '''Biopython alignment'''
-            try:
-                align1 = score_alignment(consensus_fasta_read.seq, gene_rec.seq)
-                score1 = round((align1.score / len(str(gene_rec.seq))) * 100, 0)
-                score2 = -1
-            except ValueError:
-                job_description = job_id, read, db, count_num_alignments
-                read.gene_score = 0
-                read.gene_name = 'ALIGNMENT ERROR'
-                read.gene_number = ''
-                return job_description
-
-            if score1 < 100:
-                try:
-                    align2 = score_alignment(consensus_fasta_read.seq, gene_rec.reverse_complement().seq)
-                    score2 = round((align2.score / len(str(gene_rec.seq))) * 100, 0)
-                except ValueError:
-                    job_description = job_id, read, db, count_num_alignments
-                    read.gene_score = 0
-                    read.gene_name = 'ALIGNMENT ERROR'
-                    read.gene_number = ''
-                    return job_description
-            score = max(score1, score2)
-
-            if read.gene_score < score:
-                read.gene_score = score
-                read.gene_name = str(gene_rec.name)
-                read.gene_number = str(gene_rec.id)
-                read.gene_sequence = str(gene_rec.seq).upper()
-
-            elif read.gene_score == score:
-                read.gene_name = str(read.gene_name) + ', ' + str(gene_rec.name)
-                read.gene_number = str(read.gene_number) + ', ' + str(gene_rec.id)
-                read.gene_sequence = str(read.gene_sequence) + ', ' + str(gene_rec.seq).upper()
-
-    job_description = job_id, read, db, count_num_alignments
-    return job_description
-
-
 def process_job_mafft(job_description):
     count_num_alignments = 0
     job_id, read, db, output_filepath = job_description
-    df_genes = load_gene_db(db.name)
+    df_genes = parser.load_gene_db(db.name)
     '''Create a seq object for a consensus read'''
     consensus_fasta_read = SeqRecord(Seq(str(read.sequence).upper()),
                          name=read.name,
@@ -568,40 +309,23 @@ def process_job_mafft(job_description):
     return count_num_alignments
 
 
-def job_descriptions_generator(DICT_READS):
-    job_id = 0
-    for db in DATABASES_SEQ:
-        for read_name in DICT_READS:
-            read = DICT_READS[read_name]
-            if str(read.db_name) == str(db.name):
-                job_id += 1
-                # if job_id < 100000:
-                job_description = [job_id, read, db, 0]
-                yield (job_description)
+def print_results_from_queue(ab1_folder, read):
+    data = []
+    date_time = datetime.now().strftime("%Y-%m-%d")
+    output_folder = os.path.join(ab1_folder, 'result')
+    filepath = os.path.join(output_folder, 'gene_result_3_' + date_time + '.csv')
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
 
+    data.append([read.name, read.sequence, read.db_name, read.db_sequence, read.db_score, read.gene_name, read.gene_number, read.gene_score, read.gene_sequence])
 
-def identify_gene_parallel(num_threads, DICT_READS):
-    start_time = round(time.time()*1000)
-    count_total_alignments = 0
+    df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
 
-    job_descriptions = job_descriptions_generator(DICT_READS)
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_threads) as executor:
-        jobs = [executor.submit(process_job_biopython, job_description) for job_description in job_descriptions]
-
-        for f in concurrent.futures.as_completed(jobs):
-            job_description = f.result()
-            job_id, read, db, alignments_done = job_description
-            DICT_READS[read.name] = read
-            count_total_alignments += alignments_done
-
-            delta = (round(time.time() * 1000) - start_time)
-            print('Job ID: ' + str(job_id) + ' Total alignments ' + str(count_total_alignments) + ' performed in ' + str(round(delta/60000,0)) + 'min'
-                  + ' Speed: ' + str(round(count_total_alignments * 1000 / delta, 0)) + ' alignments/sec '
-                  + str(read.name) + ' ' + str(read.db_name) + ' ' + str(read.db_score) + ' ' + str(read.gene_name)
-                  + ' ' + str(read.gene_number) + ' ' + str(read.gene_score))
-
-    return DICT_READS
+    if os.path.isfile(filepath):
+        with open(filepath, 'a') as f:
+            df.to_csv(f, header=False, index=False)
+    else:
+        df.to_csv(filepath, index=False)
 
 
 def print_results_gene(ab1_folder, DICT_READS):
@@ -621,6 +345,32 @@ def print_results_gene(ab1_folder, DICT_READS):
     df = pandas.DataFrame(data, columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
     # df = pandas.DataFrame(data, columns=['Read', 'Plate', 'Well', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number', 'Gene_High_Score', 'Gene_Sequence'])
 
-    df.to_csv(os.path.join(output_folder, 'gene_result_'+date_time+'.csv'), index=False)
+    df.to_csv(os.path.join(output_folder, 'gene_result_1_'+date_time+'.csv'), index=False)
     DICT_READS.clear()
     print('\nDB result file placed at: %s' % output_folder)
+
+
+def display_top(snapshot, key_type='lineno', limit=3):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        # replace "/path/to/module/file.py" with "module/file.py"
+        filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))

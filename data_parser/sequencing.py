@@ -5,17 +5,17 @@ from Bio.Seq import Seq
 db_activation_rec = SeqRecord(Seq("AATTTCTACTAAGTGTAGAT"),
                                     id="Activation_identifier",
                                     name="Activation",
-                                    description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/activation.fasta")
+                                    description="")
 
 db_deletion_rec = SeqRecord(Seq("GTTTTAGTACTCTGTAATTT"),
                                   id="Deletion_identifier",
                                   name="Deletion",
-                                  description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/deletion.fasta")
+                                  description="")
 
 db_interference_rec = SeqRecord(Seq("GTTTTAGAGCTAGAAATAGC"),
                                     id="Interference_identifier",
                                     name="Interference",
-                                    description="/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/NGS-gRNA-DB/interference.fasta")
+                                    description="")
 
 databases = [db_activation_rec, db_deletion_rec, db_interference_rec,]
 
