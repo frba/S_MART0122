@@ -1,4 +1,4 @@
-import os, pandas, re, numpy
+import os, pandas, re, numpy, csv
 from Bio import SeqIO, AlignIO
 from . import sequencing
 from Bio.Seq import Seq
@@ -54,12 +54,12 @@ def remove_duplicity_gRNA_db(ab1_folder):
 
 
 def checking_missing_data_gRNA():
-    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_1/'
-    input_file = os.path.join(database_path, 'result', 'gene_result.csv')
+    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_9/'
+    input_file = os.path.join(database_path, 'result', 'gene_result-1-incomplete.csv')
     df = pandas.read_csv(input_file).sort_values('Database')
 
     # test = df['Number'].isna()
-    test = df.dropna(subset=["Number"], inplace=True)
+    test = df.dropna(subset=['Number'])
 
     print(test)
 
@@ -92,41 +92,54 @@ def split_result_files():
 
 
 def merge_results_files():
-    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_3/'
-    input_file_1 = os.path.join(database_path, 'result', 'beluga-3', 'gene_result-32022-06-26.csv')
-    input_file_2 = os.path.join(database_path, 'result', 'beluga-3', 'gene_result-32022-06-27.csv')
-    input_file_3 = os.path.join(database_path, 'result', 'beluga-3', 'gene_result-32022-06-28.csv')
+    # database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_3/'
+    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_15/'
+    input_file_1 = os.path.join(database_path, 'result', 'gene_result_2022-07-01.csv')
+    input_file_2 = os.path.join(database_path, 'result', 'gene_result_2022-06-30.csv')
+    # input_file_3 = os.path.join(database_path, 'result', 'gene_result-3.csv')
     # input_file_4 = os.path.join(database_path, 'result', 'gene_result-1_2022-06-25_22.30.29.csv')
 
     df1 = pandas.read_csv(input_file_1).sort_values('Read')
     df2 = pandas.read_csv(input_file_2).sort_values('Read')
-    df3 = pandas.read_csv(input_file_3).sort_values('Read')
+    # df3 = pandas.read_csv(input_file_3).sort_values('Read')
     # df4 = pandas.read_csv(input_file_4).sort_values('Database')
 
-    df_merge = pandas.concat([df1, df2, df3]).sort_values('Read')
+    # df = pandas.concat([df1, df2, df3]).sort_values('Read')
+    df = pandas.concat([df1, df2]).sort_values('Read')
+    print(len(df))
+    df.to_csv(os.path.join(database_path, 'result', 'gene_result.csv'), index=False)
 
-    input_file = os.path.join(database_path, 'result', 'db_result-3.csv')
+
+def count_gRNA(ngs_folder):
+    # for file in natural_sort(os.listdir(ngs_folder)):
+    #     if file.__contains__('.assembled.'):
+    #         database_path = os.path.join(ngs_folder, file.split('---')[0])
+    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA_2/MI.M06648_0269.001.IDT_i7_1/'
+    dict = {}
+    col_name = ['Gene', 'Number', 'Count', 'Database']
+    # database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_1/'
+    input_file = os.path.join(database_path, 'result', 'gene_result.csv')
     df = pandas.read_csv(input_file)
+    countNAN = 0
+    for idx, row in df.iterrows():
+        genes = str(row['Gene']).split(', ')
+        ids = str(row['Number']).split(', ')
+        for i in range(0, len(genes)):
+            if genes[i] != 'nan' and genes[i] not in dict:
+                dict[genes[i]] = [genes[i], ids[i], len(df[df['Gene'].str.contains(genes[i], na=False)].value_counts()), row['Database']]
+            else:
+                countNAN = countNAN + 1
+    dict['nan'] = ["nan", "", countNAN, ""]
+    new_df = pandas.DataFrame.from_dict(dict)
+    new_df = new_df.T
+    new_df.columns = col_name
+    new_df.sort_values('Database').to_csv(os.path.join(database_path, 'result', "count_gRNA.csv"), index=False)
+    # with open(os.path.join(database_path, 'result', "count_gRNA.csv"), 'w') as csvFile:
+    #     wr = csv.writer(csvFile)
+    #     wr.writerow(col_name)
+    #     for key, value in dict.items():
+    #         wr.writerow([key, str(value).split(',')])
 
-    count = 0
-    data = []
-    for idx2, row2 in df.iterrows():
-        found = False
-        for idx, row in df_merge.iterrows():
-            if row[0] == row2[0]:
-                found = True
-                count = count + 1
-                data.append([row[0], row[1], row[2], row[3], row[4], row[5],
-                             row[6], row[7], row[8]])
-        print(row2[0], found)
-    print(count)
-
-    df = pandas.DataFrame(data,
-                          columns=['Read', 'R_Sequence', 'Database', 'DB_Sequence', 'DB_High_score', 'Gene', 'Number',
-                                   'Gene_High_Score', 'Gene_Sequence'])
-
-
-    df.to_csv(os.path.join(database_path, 'result', 'beluga-3', 'gene_result-3.csv'), index=False)
 
 '''Parse files'''
 def natural_sort(l):

@@ -191,18 +191,17 @@ def print_results_database(output_path, DICT_READS):
 def load_read_from_db_result(database_path):
     DICT_READS = {}
     error = ''
-    input_file = os.path.join(database_path, 'result', 'db_result-3.csv')
-    resume_result_gene_file = os.path.join(database_path, 'result', 'gene_result-3.csv')
+    input_file = os.path.join(database_path, 'result', 'db_result-1.csv')
+    resume_result_gene_file = os.path.join(database_path, 'result', 'gene_result-1.csv')
 
     if not os.path.exists(input_file):
         error = 'File with Database results not found!'
         return error, None
     else:
         df = pandas.read_csv(input_file).sort_values('Database')
-        print(df)
+
         if os.path.exists(resume_result_gene_file):
             df_gene_result = pandas.read_csv(resume_result_gene_file).sort_values('Database')
-            print(df_gene_result)
             df_left = pandas.concat([df_gene_result, df]).drop_duplicates(subset=['Read', 'R_Sequence'], keep=False)
 
 
@@ -314,7 +313,7 @@ def print_results_from_queue(ab1_folder, read):
     data = []
     date_time = datetime.now().strftime("%Y-%m-%d")
     output_folder = os.path.join(ab1_folder, 'result')
-    filepath = os.path.join(output_folder, 'gene_result_3_' + date_time + '.csv')
+    filepath = os.path.join(output_folder, 'gene_result_1_' + date_time + '.csv')
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
 

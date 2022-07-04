@@ -42,7 +42,7 @@ def sanger_analysis(argv):
 
 
 def ngs_analysis(argv):
-    ngs_folder = '/Users/flavia/Documents/NGS_project/2022_0519_NGS_results/2-Merge-QC/'
+    ngs_folder = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/'
     num_threads = 8
     # ngs_folder = os.path.join(argv[1])
     # num_threads = int(argv[2])
@@ -58,9 +58,9 @@ def ngs_analysis(argv):
     #         ngs.print_results_database(output_path, DICT_READS)
 
     '''Identify gRNA by database in reads'''
-    for file in ngs.natural_sort(os.listdir(ngs_folder)):
+    for file in parser.natural_sort(os.listdir(ngs_folder)):
         # if file.__contains__('.assembled.'):
-        if file.__contains__('MI.M06648_0266.001.IDT_i7_3---IDT_i5_1.M1_3_R1.fastq.gz.assembled'):
+        if file.__contains__('MI.M06648_0266.001.IDT_i7_9---IDT_i5_1.M2control_1_R1.fastq.gz.assembled'):
             database_path = os.path.join(ngs_folder, file.split('---')[0])
             '''Load result from database analysis, done in the previous step. 
             Every read is associated to one of three database label: Action, Deletion or Interference.
@@ -76,12 +76,14 @@ def ngs_analysis(argv):
 
 
 def main(argv):
+    ngs_folder = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/'
     # sanger_analysis(argv)
-    ngs_analysis(argv)
+    # ngs_analysis(argv)
     # parser.split_result_files()
     # parser.merge_results_files()
     # parser.checking_missing_data_gRNA()
     # parser.remove_duplicity_gene_results()
+    parser.count_gRNA(ngs_folder)
 
 
 
