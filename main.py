@@ -76,14 +76,13 @@ def ngs_analysis(argv):
 
 
 def main(argv):
-    ngs_folder = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/'
     # sanger_analysis(argv)
     # ngs_analysis(argv)
     # parser.split_result_files()
     # parser.merge_results_files()
     # parser.checking_missing_data_gRNA()
     # parser.remove_duplicity_gene_results()
-    parser.count_gRNA(ngs_folder)
+    parser.count_gRNA()
 
 
 

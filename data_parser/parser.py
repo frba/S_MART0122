@@ -3,6 +3,7 @@ from Bio import SeqIO, AlignIO
 from . import sequencing
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from collections import Counter
 
 DATABASES_SEQ = sequencing.databases
 DICT_READS = {}
@@ -110,35 +111,43 @@ def merge_results_files():
     df.to_csv(os.path.join(database_path, 'result', 'gene_result.csv'), index=False)
 
 
-def count_gRNA(ngs_folder):
-    # for file in natural_sort(os.listdir(ngs_folder)):
-    #     if file.__contains__('.assembled.'):
-    #         database_path = os.path.join(ngs_folder, file.split('---')[0])
-    database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA_2/MI.M06648_0269.001.IDT_i7_1/'
-    dict = {}
-    col_name = ['Gene', 'Number', 'Count', 'Database']
-    # database_path = '/home/flavia/Documents/Concordia/compute_canada/NGS_DATA/MI.M06648_0266.001.IDT_i7_1/'
-    input_file = os.path.join(database_path, 'result', 'gene_result.csv')
-    df = pandas.read_csv(input_file)
-    countNAN = 0
-    for idx, row in df.iterrows():
-        genes = str(row['Gene']).split(', ')
-        ids = str(row['Number']).split(', ')
-        for i in range(0, len(genes)):
-            if genes[i] != 'nan' and genes[i] not in dict:
-                dict[genes[i]] = [genes[i], ids[i], len(df[df['Gene'].str.contains(genes[i], na=False)].value_counts()), row['Database']]
-            else:
-                countNAN = countNAN + 1
-    dict['nan'] = ["nan", "", countNAN, ""]
-    new_df = pandas.DataFrame.from_dict(dict)
-    new_df = new_df.T
-    new_df.columns = col_name
-    new_df.sort_values('Database').to_csv(os.path.join(database_path, 'result', "count_gRNA.csv"), index=False)
-    # with open(os.path.join(database_path, 'result', "count_gRNA.csv"), 'w') as csvFile:
-    #     wr = csv.writer(csvFile)
-    #     wr.writerow(col_name)
-    #     for key, value in dict.items():
-    #         wr.writerow([key, str(value).split(',')])
+def count_gRNA():
+    for i in range(15, 16):
+        database_path = f'/home/flavia/Documents/Concordia/compute_canada/NGS_DATA_2/MI.M06648_0269.001.IDT_i7_{i}/'
+        col_name = ['Number', 'Gene', 'Count', 'Database']
+        input_file = os.path.join(database_path, 'result', 'gene_result.csv')
+        df = pandas.read_csv(input_file)
+
+        all_df = []
+        for db in DATABASES_SEQ:
+            dict_db = {}
+            all_gRNAs_db = []
+            df_db = df[df['Database']==db.name]
+
+            for idx, row in df_db.iterrows():
+                ids = str(row['Number']).split(', ')
+                for l in range(0, len(ids)):
+                    all_gRNAs_db.append(ids[l])
+            dict_count_db = Counter(all_gRNAs_db)
+
+
+            for idx, row in df_db.iterrows():
+                ids = str(row['Number']).split(', ')
+                genes = str(row['Gene']).split(', ')
+                for j in range(0, len(ids)):
+                    if ids[j] not in dict_db:
+                        dict_db[ids[j]] = [ids[j], genes[j], dict_count_db[ids[j]], row['Database']]
+
+            new_df_db = pandas.DataFrame.from_dict(dict_db)
+            new_df_db = new_df_db.T
+            new_df_db.columns = col_name
+            if len(new_df_db) > 0:
+                all_df.append(new_df_db)
+
+        df = pandas.concat(all_df).sort_values('Number')
+        df.sort_values(['Database', 'Count'], ascending = [True, False]).to_csv(os.path.join(database_path, 'result', "count_gRNA_IDT_i7_" +str(i)+".csv"),
+                                                       index=False)
+        print(f'MI.M06648_0266.001.IDT_i7_{i} done')
 
 
 '''Parse files'''
