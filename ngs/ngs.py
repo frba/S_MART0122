@@ -1,7 +1,7 @@
 import os, pandas, time, concurrent.futures, gc, queue
 import multiprocessing as mp
 from datetime import datetime
-from Bio import SeqIO
+from Bio import SeqIO, pairwise2
 from Bio.Align import PairwiseAligner
 from data_parser import sequencing, parser
 from Bio.Seq import Seq
@@ -92,10 +92,25 @@ def score_alignment(read_seq, identifier_seq):
     aligner.open_gap_score = -1
     aligner.extend_gap_score = -.1
     aligner.query_end_gap_score = 0
+    aligner.wildcard = 'N'
     alignments = aligner.align(read_seq.upper(), identifier_seq.upper())
     align = alignments[0]
 
     return align
+
+
+def local_alignment(read_seq, identifier_seq):
+    aligner = PairwiseAligner()
+    aligner.mode = 'local'
+    aligner.match_score = 1
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -1
+    aligner.extend_gap_score = -.1
+    aligner.query_end_gap_score = 0
+    alignments = pairwise2.align.localms(read_seq.upper(), identifier_seq.upper(), 1, -1, -1, -.1, )
+    align = alignments[0]
+
+    return alignments
 
 
 def process_job_identify_database(job_description):

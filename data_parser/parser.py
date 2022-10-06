@@ -111,8 +111,58 @@ def merge_results_files():
     df.to_csv(os.path.join(database_path, 'result', 'gene_result.csv'), index=False)
 
 
+def count_gRNA_byline():
+    for i in range(1, 2):
+        database_path = f'/home/flavia/Documents/Concordia/compute_canada/NGS_DATA_2/MI.M06648_0269.001.IDT_i7_{i}/'
+        col_name = ['Line', 'Number', 'Gene', 'Count', 'Database', 'Sequence']
+        input_file = os.path.join(database_path, 'result', 'gene_result.csv')
+        df = pandas.read_csv(input_file)
+
+        all_df = []
+        for db in DATABASES_SEQ:
+            dict_db = {}
+            all_gRNAs_db = []
+            df_db = df[df['Database']==db.name]
+            if len(df_db) > 0:
+                df_genes = load_gene_db(db.name)
+
+                # for idx, row in df_db.iterrows():
+                #     ids = str(row['Number']).split(', ')
+                #     for l in range(0, len(ids)):
+                #         all_gRNAs_db.append(ids[l])
+                # dict_count_db = Counter(all_gRNAs_db)
+
+                for idx, row in df_db.iterrows():
+                    sequence = str(row['Gene_Sequence'])
+                    all_gRNAs_db.append(sequence)
+                dict_count_db = Counter(all_gRNAs_db)
+                print(dict_count_db)
+
+                for idx, row in df_db.iterrows():
+                    ids = str(row['Number']).split(', ')
+                    genes = str(row['Gene']).split(', ')
+                    sequence = str(row['Gene_Sequence'])
+                    filter_df_genes = df_genes[df_genes["Sequence"] == sequence]
+                    for j in range(0, len(ids)):
+                        if ids[j] not in dict_db:
+                            print([filter_df_genes.index.tolist()[0], ids[j], genes[j], dict_count_db[sequence], row['Database'], sequence])
+                            dict_db[ids[j]] = [filter_df_genes.index.tolist()[0], ids[j], genes[j], dict_count_db[sequence], row['Database'], sequence]
+
+                if len(dict_db) > 0:
+                    new_df_db = pandas.DataFrame.from_dict(dict_db)
+                    new_df_db = new_df_db.T
+                    new_df_db.columns = col_name
+                    if len(new_df_db) > 0:
+                        all_df.append(new_df_db)
+
+        df = pandas.concat(all_df).sort_values('Line')
+        df.sort_values(['Database', 'Count'], ascending = [True, False]).to_csv(os.path.join(database_path, 'result', "count-byline_gRNA_IDT_i7_" +str(i)+".csv"),
+                                                       index=False)
+        print(f'MI.M06648_0266.001.IDT_i7_{i} done')
+
+
 def count_gRNA():
-    for i in range(15, 16):
+    for i in range(14, 15):
         database_path = f'/home/flavia/Documents/Concordia/compute_canada/NGS_DATA_2/MI.M06648_0269.001.IDT_i7_{i}/'
         col_name = ['Number', 'Gene', 'Count', 'Database']
         input_file = os.path.join(database_path, 'result', 'gene_result.csv')

@@ -2,6 +2,8 @@ import os, sys
 from sanger import sanger
 from data_parser import sequencing, parser
 from ngs import ngs
+from nanopore import nanopore
+from Bio import SeqIO, AlignIO
 
 
 DATABASES_SEQ = sequencing.databases
@@ -75,6 +77,29 @@ def ngs_analysis(argv):
                 ngs.print_results_gene(database_path, DICT_READS)
 
 
+def nanopore_analysis():
+    templates_folder = '/home/flavia/Documents/Concordia/Project/Nanopore/alignments/templates'
+    barcodes_folder = '/home/flavia/Documents/Concordia/Project/Nanopore/alignments'
+    assemblies_folder = '/home/flavia/Documents/Concordia/Project/Nanopore/assemblies'
+
+    template_files = [f for f in parser.natural_sort(os.listdir(templates_folder)) if os.path.isfile(os.path.join(templates_folder, f))]
+
+    template_sorted = ['W03','W02','W01','W96','W95','W94','W93','W92','W91','W90','W89','W88','W87','W86','W85','W84',
+                       'W83','W82','W81','W80','W79','W78','W77','W76','W75','W74','W73','W72','W71','W70','W69','W68',
+                       'W67','W66','W65','W64','W63','W62','W61','W60','W59','W58','W57','W56','W55','W54','W53','W52',
+                       'W51','W50','W49','W48','W47','W46','W45','W44','W43','W42','W41','W40','W39','W38','W37','W36',
+                       'W35','W34','W33','W32','W31','W30','W29','W28','W27','W26','W25','W24','W23','W22','W21','W20',
+                       'W19','W18','W17','W16','W15','W14','W13','W12','W11','W10','W09','W08','W07','W06','W05','W04']
+
+    barcode5_fasta = os.path.join(barcodes_folder, '5_barcode_sequence.fa')
+    barcode3_fasta = os.path.join(barcodes_folder, '3_barcode_sequence.fa')
+    assemblies_by_plate = parser.natural_sort([ f.path for f in os.scandir(assemblies_folder) if f.is_dir() ])
+
+    # nanopore.barcode_alignment(barcode5_fasta, barcode3_fasta, assemblies_folder, assemblies_by_plate)
+
+    # nanopore.template_alignment(templates_folder, template_files, assemblies_folder, assemblies_by_plate)
+    nanopore.template_sorted_alignment(templates_folder, template_sorted, assemblies_folder, assemblies_by_plate)
+
 def main(argv):
     # sanger_analysis(argv)
     # ngs_analysis(argv)
@@ -82,7 +107,8 @@ def main(argv):
     # parser.merge_results_files()
     # parser.checking_missing_data_gRNA()
     # parser.remove_duplicity_gene_results()
-    parser.count_gRNA()
+    # parser.count_gRNA_byline()
+    nanopore_analysis()
 
 
 
