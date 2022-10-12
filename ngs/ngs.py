@@ -107,7 +107,8 @@ def local_alignment(read_seq, identifier_seq):
     aligner.open_gap_score = -1
     aligner.extend_gap_score = -.1
     aligner.query_end_gap_score = 0
-    alignments = pairwise2.align.localms(read_seq.upper(), identifier_seq.upper(), 1, -1, -1, -.1, )
+    # alignments = pairwise2.align.localms(read_seq.upper(), identifier_seq.upper(), 1, -1, -1, -.1,)
+    alignments = pairwise2.align.localms(read_seq.upper(), identifier_seq.upper(), 1, -1, -.5, -.1,)
     align = alignments[0]
 
     return alignments

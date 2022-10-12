@@ -95,10 +95,10 @@ def nanopore_analysis():
     barcode3_fasta = os.path.join(barcodes_folder, '3_barcode_sequence.fa')
     assemblies_by_plate = parser.natural_sort([ f.path for f in os.scandir(assemblies_folder) if f.is_dir() ])
 
-    # nanopore.barcode_alignment(barcode5_fasta, barcode3_fasta, assemblies_folder, assemblies_by_plate)
+    nanopore.barcode_alignment(barcode5_fasta, barcode3_fasta, assemblies_folder, assemblies_by_plate)
 
     # nanopore.template_alignment(templates_folder, template_files, assemblies_folder, assemblies_by_plate)
-    nanopore.template_sorted_alignment(templates_folder, template_sorted, assemblies_folder, assemblies_by_plate)
+    # nanopore.template_sorted_alignment(templates_folder, template_sorted, assemblies_folder, assemblies_by_plate)
 
 def main(argv):
     # sanger_analysis(argv)
